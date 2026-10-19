@@ -35,7 +35,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (!fileArg && !a.startsWith('-')) fileArg = a;
 }
 
-const VERSION = '0.8.1';
+const VERSION = '0.8.2';
 
 if (wantHelp || (!fileArg && !wantVersion)) {
   console.log(`mdlight ${VERSION} — 轻量、离线、零遥测的本地 Markdown 阅读器
@@ -472,6 +472,30 @@ const server = createServer((req, res) => {
     return;
   }
   // CSV next to the document (Excel-friendly UTF-8 BOM, like the native host)
+  // ️ export as LaTeX: the page posts the converted .tex text; we write it next to the doc.
+  if (req.method === 'POST' && path === '/api/export-latex') {
+    let name = url.searchParams.get('name') || (basename(mdPath, extname(mdPath)) + '.tex');
+    name = basename(name);
+    if (!/.tex$/i.test(name) || name.indexOf(':') >= 0) {
+      json(res, { ok: false, error: 'name must be a .tex file' });
+      return;
+    }
+    const target = resolve(dirname(mdPath), name);
+    if (target === resolve(mdPath)) {
+      json(res, { ok: false, error: 'refusing to overwrite the document' });
+      return;
+    }
+    readBody(req, (buf) => {
+      try {
+        writeFileSync(target, (buf ? buf.toString('utf8') : ''), 'utf8');
+        json(res, { ok: true, path: target });
+      } catch (e) {
+        json(res, { ok: false, error: String(e && e.message || e) });
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && path === '/api/export-csv') {
     let name = url.searchParams.get('name') || (basename(mdPath, extname(mdPath)) + '.csv');
     name = basename(name);

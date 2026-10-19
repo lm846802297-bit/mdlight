@@ -987,3 +987,29 @@ body.mdl-layout-slide h1 {
 .mdl-vblock { min-height: 24px; }
 .mdl-vblock[data-lazy] x-mermaid,
 .mdl-vblock[data-lazy] x-equation { visibility: hidden; }
+
+/* feat12: publisher-grade paginated print view */
+@media print {
+  .pdf-page {
+    height: 1123px;
+    overflow: hidden;
+    position: relative;
+    page-break-after: always;
+    break-after: page;
+  }
+  .pdf-page:last-child { page-break-after: auto; break-after: auto; }
+  .mdl-folded { display: none; }
+}
+
+/* feat13: side-by-side dual view */
+body.mdl-split { overflow: hidden; }
+body.mdl-split #mdl-main { display: flex; gap: 0; height: 100vh; }
+body.mdl-split #mdl-main .mdl-content {
+  flex: 1 1 50%;
+  overflow-y: auto;
+  border-right: 1px solid var(--mdl-border, #e0e0e0);
+  min-width: 280px;
+}
+body.mdl-split #mdl-main #mdl-content-b { border-right: none; }
+body.mdl-split #mdl-main .mdl-content:last-child { border-right: none; }
+#mdl-btn-split.is-on { background: var(--mdl-accent, #5b8db8); color: #fff; }

@@ -262,6 +262,32 @@ namespace Mdlight
                               ",\"name\":" + Util.JsonStr(doc.Name) + "}");
                 return;
             }
+            // GET /api/doc?path=<abs> — read a second document for the split view
+            if (path.StartsWith("/api/doc?", StringComparison.Ordinal))
+            {
+                string q = path.Substring("/api/doc?".Length);
+                string p = null;
+                int pi = q.IndexOf("path=");
+                if (pi >= 0)
+                    p = Uri.UnescapeDataString(q.Substring(pi + 5).Split('&')[0]);
+                if (p == null || !System.IO.File.Exists(p))
+                {
+                    SendJson(res, "{\"ok\":false,\"error\":\"not found\"}");
+                    return;
+                }
+                try
+                {
+                    string src = System.IO.File.ReadAllText(p);
+                    string sha = Util.Sha256Hex(src);
+                    SendJson(res, "{\"ok\":true,\"source\":" + Util.JsonStr(src) + ",\"path\":" + Util.JsonStr(p) + ",\"sha\":" + Util.JsonStr(sha) + "}");
+                }
+                catch (Exception ex)
+                {
+                    SendJson(res, "{\"ok\":false,\"error\":" + Util.JsonStr(ex.Message) + "}");
+                }
+                return;
+            }
+
 
             if (path == "/api/source")
             {
@@ -331,6 +357,14 @@ namespace Mdlight
                 string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
             {
                 HandleExportCsv(req, res);
+                return;
+            }
+
+            // TeX export: the page posts the converted .tex text; write it next to the doc.
+            if (path == "/api/export-latex" &&
+                string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                HandleExportLatex(req, res);
                 return;
             }
 
@@ -710,6 +744,49 @@ namespace Mdlight
                 }
                 // UTF-8 BOM so Excel opens it without mangling Chinese.
                 System.IO.File.WriteAllText(outPath, csv, new UTF8Encoding(true));
+                SendJson(res, "{\"ok\":true,\"path\":" + Util.JsonStr(outPath) + "}");
+            }
+            catch (Exception e)
+            {
+                SendJson(res, "{\"ok\":false,\"error\":" + Util.JsonStr(e.Message) + "}");
+            }
+        }
+
+        /// <summary>POST /api/export-latex?name=X.tex — body is the .tex text produced
+        /// by the page's mdToLatex(); written next to the markdown document.</summary>
+        private void HandleExportLatex(HttpListenerRequest req, HttpListenerResponse res)
+        {
+            try
+            {
+                if (req.ContentLength64 > 64L * 1024 * 1024)
+                {
+                    SendError(res, 413, "too large");
+                    return;
+                }
+                string tex;
+                using (Stream s = req.InputStream)
+                {
+                    tex = Encoding.UTF8.GetString(Util.ReadAll(s));
+                }
+                string name = req.QueryString["name"];
+                if (string.IsNullOrEmpty(name)) name = Path.GetFileNameWithoutExtension(doc.Name) + ".tex";
+                name = Path.GetFileName(name);
+                if (!name.EndsWith(".tex", StringComparison.OrdinalIgnoreCase)
+                    || name.IndexOf(':') >= 0
+                    || IsReservedDeviceName(name))
+                {
+                    SendError(res, 400, "name must be a .tex file");
+                    return;
+                }
+                string outPath = Path.Combine(doc.Dir, name);
+                if (string.Equals(Path.GetFullPath(outPath), doc.FullPath,
+                                  StringComparison.OrdinalIgnoreCase))
+                {
+                    SendError(res, 400, "refusing to overwrite the document");
+                    return;
+                }
+                // No BOM for .tex — LaTeX toolchains are BOM-hostile.
+                System.IO.File.WriteAllText(outPath, tex, new UTF8Encoding(false));
                 SendJson(res, "{\"ok\":true,\"path\":" + Util.JsonStr(outPath) + "}");
             }
             catch (Exception e)

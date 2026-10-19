@@ -184,3 +184,23 @@ mdlight/
 - 所有依赖 MIT：markdown-it、KaTeX、highlight.js、esbuild（esbuild 仅构建时）。
 - 所有代码从零编写，不含任何闭源第三方代码；同类软件的公开行为研究仅用于**理解常见缺陷与工程模式**。
 - 软件本身 MIT，可自由分发。
+
+## feat14: Markdown → LaTeX 导出
+
+### 背景
+用户需要将 mdlight 预览的 Markdown 文档直接导出为可编译的 .tex 文件。
+
+### 实现
+`core/renderer.mjs` 增加 `mdToLatex(src)` 纯函数：
+- 标题 → section / subsection / subsubsection
+- **bold** / *italic* / `code` / ~~strike~~ → 	extbf / 	extit / 	exttt / 纯文本
+- 表格 → egin{tabular} + hline
+- 目录列表 → egin{itemize} / egin{enumerate}
+- 引用 → egin{quote}
+- 图片 → includegraphics[width=linewidth]
+- 代码块 → egin{verbatim}
+- $math$ 通过、[link](url) → href
+- mermaid 图 → % 注释块
+
+客户端流程：TeX 按钮 → fetch /api/source → mdToLatex() → POST /api/export-latex?name=X.tex → 服务端写写文档目录。
+单一文件导出场景（无服务器）时 TeX 按钮显示 no-service 提示。

@@ -507,44 +507,117 @@
     var h = document.body.scrollHeight || 842;
     return Math.max(1, Math.ceil(h / 842));
   }
-  function applyPdfMacros() {
-    var cfg = S.cfg || {};
-    var header = cfg.pdfHeader || '';
-    var footer = cfg.pdfFooter || '';
-    if (!header && !footer) return;
-    var title = (S.toc && S.toc[0] && S.toc[0].text) || (fileEl ? fileEl.textContent : '');
-    var total = estimateTotalPages();
-    var curPage = Math.max(1, Math.round((window.scrollY || 0) / 842) + 1);
-    var h = pdfMacro(header, title, curPage, total);
-    var f = pdfMacro(footer, title, curPage, total);
-    var style = document.getElementById('mdl-pdf-macros') || document.createElement('style');
-    style.id = 'mdl-pdf-macros';
+// feat12 replacement block for ui/app.js (spliced in by feat12-paginated-pdf.mjs)
+  // ---- publisher-grade paginated PDF ------------------------------------------
+  // Before printing we re-lay the document out as a stack of fixed-height A4
+  // page boxes. Each top-level block is measured against the usable page
+  // height and explicit page breaks are inserted so that:
+  //   * no block is cut in half (orphans/widows handled at block level),
+  //   * a heading is never the last line of a page (dangle guard),
+  //   * header/footer live in @page margin boxes and repeat on every page.
+  var PDF_PAGE_H = 1123;        // A4 usable height px at 96dpi (297mm - 40mm margins)
+  var PDF_CONTENT_W = 794;      // A4 width minus 30mm margins at 96dpi
+  function buildPaginatedCss(header, footer, title) {
+    var q = String.fromCharCode(34); // "
     var css = [
       '@media print {',
-      '  @page { size: auto; margin: 20mm 15mm; }',
-      '  body { line-height: 1.6; orphans: 3; widows: 3; }',
-      '  h1, h2, h3, h4, h5, h6 { break-after: avoid; page-break-after: avoid; }',
-      '  p, li { orphans: 3; widows: 3; }',
-      '  pre, code { break-inside: avoid; page-break-inside: avoid; }',
-      '  table { break-inside: avoid; page-break-inside: avoid; }',
-      '  figure, .mdl-diagram { break-inside: avoid; page-break-inside: avoid; }',
-      '  .mdl-folded { display: none; }',
-      '  #mdl-toc, .mdl-toolbar, .mdl-find-bar, .mdl-sc-panel, #mdl-editor { display: none !important; }',
-      '  body::before, body::after { z-index: 100; pointer-events: none; }',
+      '  @page {',
+      '    size: 210mm 297mm; margin: 20mm 15mm;',
     ];
-    var q = String.fromCharCode(34);
-    if (h) css.push('  body::before { content: ' + q + h.replace(new RegExp(q, 'g'), '\\' + q) + q + '; position: fixed; top: 5mm; left: 15mm; right: 15mm; font-size: 9px; color: #666; }');
-    if (f) css.push('  body::after { content: ' + q + f.replace(new RegExp(q, 'g'), '\\' + q) + q + '; position: fixed; bottom: 5mm; left: 15mm; right: 15mm; font-size: 9px; color: #666; }');
-    css.push('}');
-    style.textContent = css.join(String.fromCharCode(10));
+    if (header) css.push('    @top-left { content: ' + q + header + q + '; font-size: 8px; color: #888; }');
+    if (footer) css.push('    @bottom-right { content: ' + q + footer + q + '; font-size: 8px; color: #888; }');
+    css.push(
+      '  }',
+      '  html, body { width: ' + PDF_CONTENT_W + 'px; }',
+      '  #mdl-content { width: ' + PDF_CONTENT_W + 'px; }',
+      '  .pdf-page { height: ' + PDF_PAGE_H + 'px; overflow: hidden; page-break-after: always; break-after: page; position: relative; }',
+      '  .pdf-page:last-child { page-break-after: auto; break-after: auto; }',
+      '  .pdf-page > * { orphans: 3; widows: 3; }',
+      '  h1, h2, h3, h4, h5, h6 { break-after: avoid; page-break-after: avoid; }',
+      '  pre, code, table, figure, .mdl-diagram, .mdl-callout { break-inside: avoid; page-break-inside: avoid; }',
+      '  .mdl-folded { display: none; }',
+      '  #mdl-toc, .mdl-toolbar, .mdl-find-bar, .mdl-sc-panel, #mdl-editor, .mdl-tab-bar { display: none !important; }',
+      '}'
+    );
+    return css.join(String.fromCharCode(10));
+  }
+  // Paginate: walk #mdl-content top-level blocks and group them into pages of
+  // PDF_PAGE_H px. A heading never ends a page: if a heading lands within the
+  // last 48px of a page with content after it, the heading moves to the next
+  // page (dangle guard).
+  function paginateContent() {
+    var content = document.getElementById('mdl-content');
+    if (!content) return;
+    // remove any previous pagination wrappers (unwind them)
+    content.querySelectorAll(':scope > .pdf-page').forEach(function (p) {
+      while (p.firstChild) content.insertBefore(p.firstChild, p);
+      p.remove();
+    });
+    content.classList.remove('pdf-paginated');
+    var blocks = Array.prototype.slice.call(content.children);
+    if (!blocks.length) return;
+    var pages = [];
+    var cur = null, used = 0;
+    var DANGLE = 48; // heading dangle guard height
+    blocks.forEach(function (blk) {
+      var h = blk.getBoundingClientRect().height || 0;
+      var isHeading = /^H[1-6]$/.test(blk.tagName);
+      var hasFollow = blk.nextElementSibling !== null;
+      // dangle guard: heading that would be the last content on a page
+      if (isHeading && hasFollow && used + h > PDF_PAGE_H - DANGLE && used > 0) {
+        pages.push(cur);
+        cur = document.createElement('div');
+        cur.className = 'pdf-page';
+        used = 0;
+      } else if (used + h > PDF_PAGE_H && used > 0) {
+        pages.push(cur);
+        cur = document.createElement('div');
+        cur.className = 'pdf-page';
+        used = 0;
+      }
+      cur.appendChild(blk);
+      used += h;
+    });
+    if (cur) pages.push(cur);
+    pages.forEach(function (pg) {
+      content.insertBefore(pg, content.lastElementSibling || null);
+    });
+    content.classList.add('pdf-paginated');
+  }
+  function applyPdfMacros() {
+    var cfg = S.cfg || {};
+    var title = (S.toc && S.toc[0] && S.toc[0].text) || (fileEl ? fileEl.textContent : '');
+    var header = (cfg.pdfHeader || '').trim();
+    var footer = (cfg.pdfFooter || '').trim();
+    var total = estimateTotalPages();
+    header = header ? pdfMacro(header, title, 0, total) : title;
+    footer = footer ? pdfMacro(footer, title, 0, total) : '';
+    var style = document.getElementById('mdl-pdf-macros') || document.createElement('style');
+    style.id = 'mdl-pdf-macros';
+    style.textContent = buildPaginatedCss(header, footer, title);
     if (!style.parentNode) document.head.appendChild(style);
+    paginateContent();
   }
 
   // ---- print ------------------------------------------------------------------
   var printBtn = document.getElementById('mdl-btn-print');
   if (printBtn) printBtn.addEventListener('click', function () {
     applyPdfMacros();
-    window.print();
+    // Let the paginated layout paint before the print dialog locks the DOM.
+    setTimeout(function () { window.print(); }, 80);
+  });
+  // Undo pagination after printing so the on-screen view returns to normal flow.
+  window.addEventListener('afterprint', function () {
+    var content = document.getElementById('mdl-content');
+    if (content) {
+      content.querySelectorAll(':scope > .pdf-page').forEach(function (p) {
+        while (p.firstChild) content.insertBefore(p.firstChild, p);
+        p.remove();
+      });
+      content.classList.remove('pdf-paginated');
+      var st = document.getElementById('mdl-pdf-macros');
+      if (st) st.remove();
+    }
   });
 
   // ---- 📊 export CSV (parity feature) -----------------------------------------
@@ -583,7 +656,104 @@
   var csvBtn = document.getElementById('mdl-btn-csv');
   if (csvBtn) csvBtn.addEventListener('click', exportCsv);
 
-  // ---- 📄 export PDF (parity feature) -----------------------------------------
+  // ---- export current document as LaTeX (.tex) --------------------------
+  function exportLatex() {
+    var mod = window.MDLRenderer;
+    if (!mod || typeof mod.mdToLatex !== 'function') {
+      toast(t('tex-failed', 'LaTeX 导出失败')); return;
+    }
+    // Get the raw markdown source: prefer the in-memory source from the
+    // source editor if open, otherwise fetch from the server.
+    var sourceEl2 = document.getElementById('mdl-source');
+    var doExport = function (source) {
+      if (!source) { toast(t('tex-failed', 'LaTeX 导出失败')); return; }
+      var tex;
+      try { tex = mod.mdToLatex(source); }
+      catch (e) { toast(t('tex-failed', 'LaTeX 导出失败')); return; }
+      var base = (S.filepath || 'document').replace(/.[^.]*$/, '');
+      var name = base + '.tex';
+      fetch('/api/export-latex?name=' + encodeURIComponent(name),
+        { method: 'POST', body: tex })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ok) toast(t('tex-exported', '已导出 LaTeX 文件'));
+          else toast(t('tex-failed', 'LaTeX 导出失败') + ' ' + ((j && j.error) || ''));
+        })
+        .catch(function () { toast(t('no-service', '无法联系 mdlight 服务')); });
+    };
+    if (sourceEl2 && sourceEl2.value && sourceEl2.value.trim()) {
+      doExport(sourceEl2.value);
+    } else {
+      // fetch source from the server
+      fetch('/api/source', { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { doExport((j && j.source) || ''); })
+        .catch(function () { toast(t('no-service', '无法联系 mdlight 服务')); });
+    }
+  }
+  var texBtn = document.getElementById('mdl-btn-tex');
+  if (texBtn) texBtn.addEventListener('click', exportLatex);
+
+  
+  // ---- ⇄ side-by-side dual view ------------------------------------------------
+  // Split the content area into two panes. The left pane keeps the current doc;
+  // the right pane is a second <div id="mdl-content-b"> that renders a chosen
+  // second document (or the same doc for comparison). Each pane scrolls
+  // independently. The split state is session-scoped (not persisted).
+  var splitOn = false;
+  var splitPane = null;   // the right-pane element
+  function enableSplit() {
+    if (splitOn) return;
+    splitOn = true;
+    document.body.classList.add('mdl-split');
+    var main = document.getElementById('mdl-main') || contentEl.parentNode;
+    splitPane = document.createElement('div');
+    splitPane.id = 'mdl-content-b';
+    splitPane.className = 'mdl-content';
+    splitPane.innerHTML = '<p class="mdl-loading">\u6b63\u5728\u52a0\u8f7d\u2026</p>';
+    main.insertBefore(splitPane, contentEl.nextSibling);
+    // render a second doc if there is one open in tabs
+    var other = openTabs.length > 1 ? openTabs.find(function (tb) { return !tb.active; }) : null;
+    if (other) {
+      fetchSecondDoc(other);
+    } else {
+      splitPane.innerHTML = '<div class="mdl-empty"><p>\u53f3\u4fa7\u7a7a\u5c55\u793a\u533a\uff1a\u70b9\u51fb\u5de6\u4fa7\u6807\u7b7e\u6253\u5f00\u4e00\u4e2a\u6587\u6863\u540e\u6b64\u5904\u4f1a\u81ea\u52a8\u540c\u6b65\u3002</p></div>';
+    }
+    var btn = document.getElementById('mdl-btn-split');
+    if (btn) btn.classList.add('is-on');
+  }
+  function disableSplit() {
+    if (!splitOn) return;
+    splitOn = false;
+    document.body.classList.remove('mdl-split');
+    if (splitPane && splitPane.parentNode) splitPane.parentNode.removeChild(splitPane);
+    splitPane = null;
+    var btn = document.getElementById('mdl-btn-split');
+    if (btn) btn.classList.remove('is-on');
+  }
+  function fetchSecondDoc(tab) {
+    if (!splitPane) return;
+    splitPane.innerHTML = '<p class="mdl-loading">\u6b63\u5728\u52a0\u8f7d\u2026</p>';
+    fetch('/api/doc?path=' + encodeURIComponent(tab.path || tab.name))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var mod = window.MDLRenderer;
+        if (!mod) throw new Error('renderer \u672a\u52a0\u8f7d');
+        var out = mod.render((j && j.source) || '', { hardBreaks: !!(S.cfg && S.cfg.hardBreaks) });
+        splitPane.innerHTML = out.html;
+        splitPane.querySelectorAll('x-mermaid').forEach(function (el, i) {
+          // render mermaid into the split pane too
+          if (typeof mmRenderOne === 'function') mmRenderOne(window.MDLMermaid, el, i);
+        });
+      })
+      .catch(function (e) {
+        splitPane.innerHTML = '<div class="mdl-empty"><p>' + (e.message || '\u52a0\u8f7d\u5931\u8d25') + '</p></div>';
+      });
+  }
+  var splitBtn = document.getElementById('mdl-btn-split');
+  if (splitBtn) splitBtn.addEventListener('click', function () { splitOn ? disableSplit() : enableSplit(); });
+
+// ---- 📄 export PDF (parity feature) -----------------------------------------
   // The native host renders the page to PDF via WebView2 PrintToPdfAsync, so
   // mermaid / KaTeX come out exactly as on screen. Only available in a real
   // window (a plain Edge --app has no chrome.webview).
@@ -1425,6 +1595,7 @@
     ctxMenu.appendChild(ctxSep());
     ctxMenu.appendChild(ctxItem('⎙', t('print', '打印'), 'Ctrl+P', function () { window.print(); }));
     ctxMenu.appendChild(ctxItem('📊', t('export-csv', '导出表格为 CSV'), '', function () { exportCsv(); }));
+    ctxMenu.appendChild(ctxItem('TeX', t('export-tex', '导出为 LaTeX (.tex)'), '', function () { exportLatex(); }));
     ctxMenu.appendChild(ctxItem('📄', t('export-pdf', '导出为 PDF'), '', function () {
       if (webview) window.chrome.webview.postMessage('export:pdf');
       else toast(t('pdf-window-only', 'PDF 导出需窗口模式'));
