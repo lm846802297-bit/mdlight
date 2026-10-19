@@ -5,6 +5,9 @@ using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.IO.Pipes;
+using System.Text;
+using System.Runtime;
 using System.Windows.Forms;
 
 namespace Mdlight
@@ -25,6 +28,11 @@ namespace Mdlight
     internal static class Program
     {
         private const string AppTitle = "mdlight";
+private static readonly string MutexName = "Globalmdlight-single-" +
+            (Environment.GetEnvironmentVariable("USERNAME") ?? "default");
+        // The named pipe the primary instance listens on; a second instance
+        // connects, writes the file path, and the primary swaps its doc.
+        private const string PipeName = "mdlight-hotopen";
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern bool SetDllDirectory(string lpPathName);
@@ -104,6 +112,36 @@ namespace Mdlight
             // edits the shared config.json that every future window reads.
             if (settings) { Settings.Show(null); return 0; }
 
+            // ---- single-instance + CLI hot-send ---------------------------------
+            // If another mdlight window is already open, forward the file to it
+            // via the named pipe and exit — no second window, no port clash.
+            // --no-window and --export are exempt (they don't open a window).
+            if (!noWindow && !export)
+            {
+                bool created;
+                Mutex instanceMutex =
+                    new Mutex(true, MutexName, out created);
+                if (!created)
+                {
+                    Util.Log("second instance detected, forwarding to pipe");
+                    bool forwarded = ForwardToPrimary(file);
+                    instanceMutex.Close();
+                    if (forwarded)
+                    {
+                        WriteConsole("已转发给正在运行的 mdlight: " +
+                                      (file ?? "<当前文件>"));
+                        return 0;
+                    }
+                    // forwarding failed: fall through and open a new window
+                }
+                else
+                {
+                    // we are the primary — start the hot-open pipe listener
+                    StartPipeListener();
+                    // the listener thread closure keeps instanceMutex alive for the process lifetime
+                }
+            }
+
             // ---- pick a document ------------------------------------------
             if (file == null)
             {
@@ -181,6 +219,7 @@ namespace Mdlight
 
             // ---- serve ----------------------------------------------------
             Server server = new Server(doc);
+            CurrentServer = server;
             try
             {
                 server.Start(forcedPort);
@@ -214,6 +253,88 @@ namespace Mdlight
         }
 
         // ---------------------------------------------------------------------
+
+        // ---------------------------------------------------------------------
+
+        private static bool ForwardToPrimary(string filePath)
+        {
+            // Connect to the primary instance's hot-open pipe. The path is
+            // transmitted as UTF-8 with a 4-byte little-endian length prefix.
+            if (filePath == null)
+                return false; // nothing to forward (the picker runs in the primary)
+            try
+            {
+                using (NamedPipeClientStream pipe =
+                        new NamedPipeClientStream(".", PipeName,
+                        PipeDirection.Out))
+                {
+                    pipe.Connect(3000);
+                    byte[] data = Encoding.UTF8.GetBytes(filePath);
+                    byte[] header = BitConverter.GetBytes(data.Length);
+                    pipe.Write(header, 0, 4);
+                    pipe.Write(data, 0, data.Length);
+                    pipe.Flush();
+                }
+                return true;
+            }
+            catch (Exception e)
+            {
+                Util.Log("ForwardToPrimary failed: " + e.Message);
+                return false;
+            }
+        }
+
+        private static void StartPipeListener()
+        {
+            // One server-side pipe instance; each incoming connection is handled
+            // on a background thread so the UI thread is never blocked.
+            Thread t = new Thread(new ParameterizedThreadStart(delegate(object arg)
+            {
+                try
+                {
+                    while (true)
+                    {
+                        NamedPipeServerStream srv =
+                            new NamedPipeServerStream(PipeName, PipeDirection.In,
+                                                      1,
+                                                      PipeTransmissionMode.Byte,
+                                                      PipeOptions.Asynchronous);
+                        srv.WaitForConnection();
+                        int len = 0;
+                        byte[] header = new byte[4];
+                        srv.Read(header, 0, 4);
+                        len = BitConverter.ToInt32(header, 0);
+                        if (len <= 0 || len > 65536) continue;
+                        byte[] buf = new byte[len];
+                        int read = 0;
+                        while (read < len)
+                        {
+                            int n = srv.Read(buf, read, len - read);
+                            if (n <= 0) break;
+                            read += n;
+                        }
+                        if (read != len) { srv.Close(); continue; }
+                        string path = Encoding.UTF8.GetString(buf, 0, read);
+                        Util.Log("hot-open request: " + path);
+                        if (File.Exists(path))
+                        {
+                            // Signal the UI thread to swap the doc. The Server
+                            // instance is the one currently serving; we find it
+                            // via the static currentDoc holder set in Main.
+                            if (CurrentServer != null)
+                            {
+                                CurrentServer.SwapDoc(new Doc(path));
+                                CurrentServer.Reload();
+                            }
+                        }
+                        srv.Close();
+                    }
+                }
+                catch (Exception e) { Util.Log("pipe listener error: " + e.Message); }
+            }));
+            t.IsBackground = true;
+            t.Start();
+        }
 
         private static string PickFile()
         {
@@ -301,6 +422,7 @@ namespace Mdlight
             }
         }
 
+        private static Server CurrentServer;
         private static string finalNativeDir;
 
         private static Assembly ResolveWebView2(object sender, ResolveEventArgs args)

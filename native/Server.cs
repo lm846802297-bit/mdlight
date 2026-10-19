@@ -23,7 +23,7 @@ namespace Mdlight
         private const int PortFirst = 20100;
         private const int PortAttempts = 40;
 
-        private readonly Doc doc;
+        private Doc doc;
         private HttpListener listener;
         private volatile bool stopping;
         private readonly List<SseClient> clients = new List<SseClient>();
@@ -316,6 +316,16 @@ namespace Mdlight
                 return;
             }
 
+            // 📂 open-file: the drop handler posts {name, content}; write the
+            // dropped .md into the doc's directory and signal a reload so the
+            // WebView2 picks it up on the next navigation.
+            if (path == "/api/open-file" &&
+                string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                HandleOpenFile(req, res);
+                return;
+            }
+
             // 📊 export: the page posts the CSV text; we write it next to the doc.
             if (path == "/api/export-csv" &&
                 string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
@@ -603,6 +613,68 @@ namespace Mdlight
             return false;
         }
 
+        /// <summary>POST /api/open-file — body is {"name":"X.md","content":"..."};
+        /// write the file next to the current doc and reload the watcher.</summary>
+        private void HandleOpenFile(HttpListenerRequest req, HttpListenerResponse res)
+        {
+            string body;
+            try
+            {
+                if (req.ContentLength64 > 64L * 1024 * 1024)
+                {
+                    SendError(res, 413, "too large");
+                    return;
+                }
+                using (Stream s = req.InputStream)
+                {
+                    body = Encoding.UTF8.GetString(Util.ReadAll(s));
+                }
+            }
+            catch (Exception e)
+            {
+                SendError(res, 400, "read error: " + e.Message);
+                return;
+            }
+
+            // Two call shapes:
+            //   {path: "..."}  — switch to an existing file (tab manager)
+            //   {name, content} — write a dropped new file into the doc dir
+            string p = Json.GetString(body, "path");
+            if (!string.IsNullOrEmpty(p))
+            {
+                try { p = System.IO.Path.GetFullPath(p); }
+                catch (Exception) { }
+                if (!System.IO.File.Exists(p))
+                {
+                    SendError(res, 404, "file not found");
+                    return;
+                }
+                SwapDoc(new Doc(p));
+                SendJson(res, "{\"ok\":true,\"path\":" + Util.JsonStr(p) + "}");
+                return;
+            }
+            string name = Json.GetString(body, "name");
+            string content = Json.GetString(body, "content");
+            if (string.IsNullOrEmpty(name) || content == null)
+            {
+                SendError(res, 400, "path or (name+content) required");
+                return;
+            }
+            // Only accept markdown files; strip any path component.
+            name = System.IO.Path.GetFileName(name);
+            if (!name.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
+                !name.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase))
+            {
+                SendError(res, 400, "only .md files can be dropped in");
+                return;
+            }
+            string outPath = System.IO.Path.Combine(doc.Dir, name);
+            System.IO.File.WriteAllText(outPath, content, new UTF8Encoding(false));
+            // Re-point the watcher at the new file and tell the page to reload.
+            SwapDoc(new Doc(outPath));
+            SendJson(res, "{\"ok\":true,\"path\":" + Util.JsonStr(outPath) + "}");
+        }
+
         private void HandleExportCsv(HttpListenerRequest req, HttpListenerResponse res)
         {
             try
@@ -750,6 +822,28 @@ namespace Mdlight
 
         public void Reload()
         {
+            BroadcastReload();
+        }
+
+        /// <summary>Stop the file watcher (call before re-pointing it).</summary>
+        public void StopWatcher()
+        {
+            if (watcher != null)
+            {
+                watcher.EnableRaisingEvents = false;
+                watcher.Dispose();
+                watcher = null;
+            }
+        }
+
+        /// <summary>Swap the document this server serves without restarting.
+        /// Used by the native drag-and-drop open: the WebView2 is re-navigated
+        /// to the new doc's URL and the file watcher is re-pointed.</summary>
+        public void SwapDoc(Doc newDoc)
+        {
+            this.doc = newDoc;
+            StopWatcher();
+            StartWatcher();
             BroadcastReload();
         }
 

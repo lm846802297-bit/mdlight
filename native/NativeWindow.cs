@@ -138,6 +138,30 @@ namespace Mdlight
                                 ? FormWindowState.Normal : FormWindowState.Maximized;
                         else if (msg == "win:close") Close();
                         else if (msg == "export:pdf") ExportPdf();
+                        else if (msg.StartsWith("open:"))
+                        {
+                            // Drag-and-drop from the page: navigate WebView2 to a
+                            // new local doc. The server is rebuilt in-place by
+                            // reloading the URL (the server's doc is swapped via
+                            // the /api/open-file route if present, else a fresh
+                            // start).
+                            string p = msg.Substring(5);
+                            Util.Log("open-file request: " + p);
+                            if (System.IO.File.Exists(p))
+                            {
+                                Doc newDoc = new Doc(p);
+                                // Swap the doc in the running server so the next
+                                // page load shows the new file.
+                                server.SwapDoc(newDoc);
+                                web.CoreWebView2.Navigate(server.BaseUrl + "?frameless=1&doc=" +
+                                    System.Uri.EscapeDataString(p));
+                            }
+                            else
+                            {
+                                MessageBox.Show("文件不存在：" + p, "mdlight",
+                                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            }
+                        }
                     }
                     catch (Exception ex) { Util.Log("win ctl error: " + ex.Message); }
                 };

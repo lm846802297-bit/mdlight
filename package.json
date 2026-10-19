@@ -20,7 +20,7 @@
     "build": "node tools/build.mjs",
     "build:mermaid": "node tools/build-mermaid.mjs",
     "build:native": "node tools/build-native.mjs",
-    "test": "node test/smoke.mjs && node test/macro-check.mjs && node test/mermaid-check.mjs && node test/dist-standalone.mjs && node test/parity-check.mjs && node test/native-check.mjs && node test/wysiwyg-check.mjs && node test/eqserial-check.mjs && node test/mdserial-fix-check.mjs && node test/config-check.mjs && node test/harden-check.mjs && node test/feat-check.mjs && node test/marp-check.mjs",
+    "test": "node test/smoke.mjs && node test/macro-check.mjs && node test/mermaid-check.mjs && node test/dist-standalone.mjs && node test/parity-check.mjs && node test/native-check.mjs && node test/wysiwyg-check.mjs && node test/eqserial-check.mjs && node test/mdserial-fix-check.mjs && node test/config-check.mjs && node test/harden-check.mjs && node test/feat-check.mjs && node test/marp-check.mjs && node test/feat2-check.mjs",
     "test:browser": "node test/mermaid-browser.mjs",
     "exe": "node tools/build-native.mjs && start dist/native/mdlight.exe"
   },

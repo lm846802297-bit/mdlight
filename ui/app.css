@@ -894,3 +894,96 @@ html { scroll-behavior: smooth; }
 #mdl-marp-hud .mdl-marp-hud-timer { position: absolute; bottom: 10px; left: 16px; opacity: .85; }
 #mdl-marp-hud .mdl-marp-hud--header:empty,
 #mdl-marp-hud .mdl-marp-hud--footer:empty { display: none; }
+
+/* ---- custom shortcut panel (Ctrl+K) ---- */
+.mdl-sc-panel {
+  position: fixed; top: 44px; right: 12px; z-index: 900;
+  min-width: 220px; max-width: 320px;
+  background: var(--mdl-bg, #fff); color: var(--mdl-fg, #222);
+  border: 1px solid var(--mdl-border, #ddd); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12); padding: 10px 14px;
+  font-family: var(--mdl-mono, Consolas), monospace; font-size: 12px;
+}
+.mdl-sc-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
+.mdl-sc-lbl { opacity: .75; }
+.mdl-sc-val { font-weight: 600; }
+.mdl-sc-btns { margin-top: 8px; display: flex; gap: 8px; }
+.mdl-sc-btns .mdl-btn { cursor: pointer; }
+
+/* ---- drag-and-drop file open ---- */
+body.mdl-drag-over { outline: 3px solid var(--mdl-accent, #5b8db8); outline-offset: -3px; }
+
+/* ---- multi-document tab bar ---- */
+.mdl-tab-bar {
+  display: flex;
+  flex: 0 0 auto;
+  background: var(--mdl-bg-alt, #f0f0f0);
+  border-bottom: 1px solid var(--mdl-border, #ddd);
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: 32px;
+}
+.mdl-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  border-right: 1px solid var(--mdl-border, #ddd);
+  color: var(--mdl-fg-dim, #666);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mdl-tab:hover { background: var(--mdl-accent-soft, rgba(91,141,184,.15)); }
+.mdl-tab-active {
+  background: var(--mdl-bg, #fff);
+  color: var(--mdl-fg, #333);
+  font-weight: 500;
+}
+.mdl-tab-close {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+.mdl-tab-close:hover { opacity: 1; color: #c00; }
+
+/* ---- custom layout templates (stream / a4 / slide) ---- */
+/* A4: centred fixed-width column mimicking a printed page */
+body.mdl-layout-a4 .mdl-content {
+  max-width: 794px;  /* 210 mm @ 96 dpi */
+  margin: 0 auto;
+  background: #fff;
+  padding: 60px 72px;
+  box-shadow: 0 0 12px rgba(0,0,0,.1);
+}
+body.mdl-layout-a4 .mdl-content p,
+body.mdl-layout-a4 .mdl-content li {
+  orphans: 3; widows: 3;
+}
+/* Slide: full-viewport pages, each section fills the viewport height */
+body.mdl-layout-slide .mdl-content {
+  max-width: none;
+  padding: 0;
+}
+body.mdl-layout-slide section,
+body.mdl-layout-slide article {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 64px;
+  page-break-after: always;
+}
+body.mdl-layout-slide h1 {
+  font-size: 2.4em;
+  margin-bottom: .4em;
+}
+/* Default streaming layout: no extra rules (existing styles apply) */
+
+/* ---- virtual scrolling / lazy blocks ---- */
+.mdl-vblock { min-height: 24px; }
+.mdl-vblock[data-lazy] x-mermaid,
+.mdl-vblock[data-lazy] x-equation { visibility: hidden; }

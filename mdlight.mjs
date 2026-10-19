@@ -35,7 +35,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (!fileArg && !a.startsWith('-')) fileArg = a;
 }
 
-const VERSION = '0.8.0';
+const VERSION = '0.8.1';
 
 if (wantHelp || (!fileArg && !wantVersion)) {
   console.log(`mdlight ${VERSION} — 轻量、离线、零遥测的本地 Markdown 阅读器
@@ -529,6 +529,33 @@ const server = createServer((req, res) => {
     send(res, 'text/css; charset=utf-8', b);
     return;
   }
+  // Browser build of core/renderer.mjs — the classic <script> the page loads
+  // AND the importScripts() target inside the renderer worker.
+  if (path === '/assets/renderer.js') {
+    try {
+      const src = readAsset('ui/renderer.js', true);
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(src);
+    } catch (e) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('404 renderer.js');
+    }
+    return;
+  }
+
+  // Off-thread renderer worker (parity with the native host's /assets route)
+  if (path === '/assets/renderer-worker.js') {
+    try {
+      const src = readAsset('ui/renderer-worker.js', true);
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(src);
+    } catch (e) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('404 renderer-worker.js');
+    }
+    return;
+  }
+
   if (path === '/assets/katex.css') {
     send(res, 'text/css; charset=utf-8', getKatexCss());
     return;

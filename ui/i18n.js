@@ -12,7 +12,16 @@
   'use strict';
 
   var DICTS = {
-    'zh-CN': {},
+    'zh-CN': {
+      'sc-reset': '恢复默认',
+      'sc-reset-done': '已恢复默认快捷键',
+      'sc-close': '关闭',
+      'dd-not-md': '仅支持 .md / .markdown 文件',
+      'dd-open-failed': '无法打开文件：',
+      'tab-close': '关闭',
+      'tab-open': '新标签',
+      'dd-opened-static': '已打开：',
+    },
     'en-US': {
       // topbar
       'toc': 'Contents (Ctrl+T)',
@@ -28,6 +37,14 @@
       'mindmap': 'Outline mind-map (Ctrl+Shift+M)',
       'marp': 'Presentation (F5)',
       'marp-ready': 'Marp slides detected ({n}); press F5 to present',
+      'sc-reset': 'Reset to defaults',
+      'sc-reset-done': 'Shortcuts reset',
+      'sc-close': 'Close',
+      'dd-not-md': 'Only .md / .markdown files supported',
+      'dd-open-failed': 'Cannot open file:',
+      'tab-close': 'Close',
+      'tab-open': 'New tab',
+      'dd-opened-static': 'Opened (static mode, not saved):',
       'to-top': 'Back to top',
       'empty-title': 'Nothing here yet',
       'empty-hint': 'Open or edit a Markdown file on the left to get started',

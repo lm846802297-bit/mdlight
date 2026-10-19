@@ -245,7 +245,9 @@
     var known = FONTS.some(function (f) { return f[0] === cur; });
     // a font set from the ⚙ window may not be in the built-in list; add it to a
     // local view only — pushing into FONTS made the array grow every re-render
-    var list = FONTS;
+    // Prefer system-detected fonts over the built-in list when available
+    var sysF = availableFonts();
+    var list = sysF.length ? sysF.map(function (f) { return [f, f, f]; }) : FONTS;
     if (cur && !known) list = FONTS.concat([[cur, cur + '（当前）', cur + ' (current)']]);
     sel.innerHTML = '';
     list.forEach(function (f) {
@@ -296,12 +298,68 @@
     // config fetch resolves after init() already ran wireCodeLineno(), so add
     // the class and re-run it here — otherwise the line spans never appear.
     if (cfg.codeLineno) { document.body.classList.add('mdl-code-lineno'); if (typeof wireCodeLineno === 'function') wireCodeLineno(); }
+
+    // ---- layout template switch (stream / a4 / slide) ----
+    var lay = cfg.layout || 'stream';
+    document.body.classList.remove('mdl-layout-a4', 'mdl-layout-slide');
+    if (lay === 'a4') document.body.classList.add('mdl-layout-a4');
+    else if (lay === 'slide') document.body.classList.add('mdl-layout-slide');
     if (cfg.rememberPosition === false) document.body.dataset.noRemember = '1';
     if (cfg.language && I18N && I18N.lang() !== cfg.language) I18N.setLang(cfg.language);
     // the appearance panel is rendered at startup, BEFORE this async config fetch
     // lands — refresh it so the skin/font/size controls show what config applied
     renderSkinGrid();
     renderFontSelect();
+  }
+
+  // ---- font enumeration (system fonts probe) ---------------------------------
+  // document.fonts.check() returns true for fonts the system actually has.
+  // We probe a list of common CJK + Latin fonts and populate a dropdown with
+  // only the ones present on this machine.
+  var KNOWN_FONTS = [
+    ['SimSun', '仿宋体', 'SimSun'],
+    ['SimHei', '黑体', 'SimHei'],
+    ['Microsoft YaHei', '微软雅黑', 'Microsoft YaHei'],
+    ['Microsoft YaHei UI', '微软雅黑 UI', 'Microsoft YaHei UI'],
+    ['KaiTi', '楷体', 'KaiTi'],
+    ['FangSong', '方正', 'FangSong'],
+    ['DengXian', '等线', 'DengXian'],
+    ['Consolas', 'Consolas', 'Consolas'],
+    ['Courier New', 'Courier New', 'Courier New'],
+    ['Segoe UI', 'Segoe UI', 'Segoe UI'],
+    ['Arial', 'Arial', 'Arial'],
+    ['Georgia', 'Georgia', 'Georgia'],
+    ['Verdana', 'Verdana', 'Verdana'],
+    ['Trebuchet MS', 'Trebuchet MS', 'Trebuchet MS'],
+    ['Impact', 'Impact', 'Impact'],
+    ['Comic Sans MS', 'Comic Sans MS', 'Comic Sans MS'],
+    ['Lucida Console', 'Lucida Console', 'Lucida Console'],
+    ['Palatino', 'Palatino', 'Palatino'],
+    ['Garamond', 'Garamond', 'Garamond'],
+    ['Times New Roman', 'Times New Roman', 'Times New Roman'],
+    ['Menlo', 'Menlo', 'Menlo'],
+    ['Monaco', 'Monaco', 'Monaco'],
+    ['Source Code Pro', 'Source Code Pro', 'Source Code Pro'],
+    ['Fira Code', 'Fira Code', 'Fira Code'],
+    ['JetBrains Mono', 'JetBrains Mono', 'JetBrains Mono'],
+    ['Noto Sans CJK SC', 'Noto Sans CJK SC', 'Noto Sans CJK SC'],
+    ['Noto Serif CJK SC', 'Noto Serif CJK SC', 'Noto Serif CJK SC'],
+  ];
+  var fontCache = null;
+  function availableFonts() {
+    if (fontCache) return fontCache;
+    fontCache = [];
+    try {
+      KNOWN_FONTS.forEach(function (f) {
+        var ok = false;
+        try { ok = document.fonts.check('12px ' + f[0]); } catch (e) {}
+        if (ok) fontCache.push(f[0]);
+      });
+    } catch (e) {
+      // fall back: just include the default list
+      KNOWN_FONTS.forEach(function (f) { fontCache.push(f[0]); });
+    }
+    return fontCache;
   }
 
   // ---- mermaid (ON-DEMAND) ----------------------------------------------------
@@ -326,6 +384,40 @@
   function mmEscape(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+  // ---- mermaid SVG cache (content fingerprint -> localStorage) ------------
+  // Rendering a mermaid diagram is expensive (parse + layout). When a document
+  // is re-opened (SSE reload, file switched back and forth) the same source
+  // text re-renders from scratch. Cache the resulting SVG keyed by a FNV-1a
+  // hash of (version + theme + source); on a hit the engine call is skipped.
+  var mmCacheVersion = 1; // bump to invalidate stale entries after engine changes
+  var MM_CACHE_PREFIX = 'mdl-mm-cv1:';
+  function mmHash(text, theme) {
+    var h = 0x811c9dc5;
+    var key = mmCacheVersion + '|' + theme + '|' + text;
+    for (var i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = (h * 0x01000193) | 0; }
+    return 'fnv' + (h >>> 0).toString(36);
+  }
+  function mmCacheGet(k) {
+    try { var v = localStorage.getItem(MM_CACHE_PREFIX + k); return v ? JSON.parse(v) : null; } catch (e) { return null; }
+  }
+  function mmCacheSet(k, svg) {
+    try { localStorage.setItem(MM_CACHE_PREFIX + k, JSON.stringify({ v: mmCacheVersion, svg: svg })); } catch (e) {}
+    return true;
+  }
+  function mmCachePrune() {
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var kk = localStorage.key(i);
+      if (kk && kk.indexOf(MM_CACHE_PREFIX) === 0) keys.push(kk);
+    }
+    if (keys.length <= 300) return;
+    keys.sort().reverse();
+    for (var j = 300; j < keys.length; j++) {
+      try { localStorage.removeItem(keys[j]); } catch (e) { break; }
+    }
+  }
+  mmCachePrune();
+
   // Render one <x-mermaid>; on failure show the source with the error, never a
   // blank box (the original viewer's flaw #2 pattern).
   function mmRenderOne(mod, el, i) {
@@ -334,11 +426,25 @@
     // keep the original text so a theme change can re-render from source
     el.setAttribute('data-mm-src', text);
     var id = 'mdl-mm-' + i;
+    var theme = mermaidTheme();
+    var ckey = mmHash(text, theme);
+    var hit = mmCacheGet(ckey);
+    if (hit && hit.v === mmCacheVersion && hit.svg) {
+      // cache hit: skip the engine call entirely
+      el.innerHTML = hit.svg;
+      el.classList.add('mdl-mermaid--ok');
+      el.setAttribute('data-mm-state', 'ok');
+      mermaidState.rendered++;
+      return Promise.resolve();
+    }
     return mod.renderInto(el, text, id)
       .then(function () {
         el.classList.add('mdl-mermaid--ok');
         el.setAttribute('data-mm-state', 'ok');
         mermaidState.rendered++;
+        // cache the rendered SVG (mermaidTheme() is stable within a theme,
+        // so the key is a pure function of the visible content)
+        mmCacheSet(ckey, el.innerHTML);
       })
       .catch(function (err) {
         var msg = String((err && err.message) || err);
@@ -382,9 +488,64 @@
       });
   }
 
+  // ---- PDF header / footer macros (@page + JS replacement) -----------------
+  // {title}/{page}/{total}/{date} placeholders in the configured
+  // pdfHeader/pdfFooter strings are substituted at print time; an @media print
+  // <style> carries @page margins so the print engine (or WebView2's
+  // PrintToPdfAsync) lays out with real page geometry.
+  function pdfMacro(str, title, page, total) {
+    if (!str) return '';
+    var d = new Date();
+    var date = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return String(str)
+      .replace(/\{title\}/g, title || '')
+      .replace(/\{page\}/g, String(page || 1))
+      .replace(/\{total\}/g, String(total || 1))
+      .replace(/\{date\}/g, date);
+  }
+  function estimateTotalPages() {
+    var h = document.body.scrollHeight || 842;
+    return Math.max(1, Math.ceil(h / 842));
+  }
+  function applyPdfMacros() {
+    var cfg = S.cfg || {};
+    var header = cfg.pdfHeader || '';
+    var footer = cfg.pdfFooter || '';
+    if (!header && !footer) return;
+    var title = (S.toc && S.toc[0] && S.toc[0].text) || (fileEl ? fileEl.textContent : '');
+    var total = estimateTotalPages();
+    var curPage = Math.max(1, Math.round((window.scrollY || 0) / 842) + 1);
+    var h = pdfMacro(header, title, curPage, total);
+    var f = pdfMacro(footer, title, curPage, total);
+    var style = document.getElementById('mdl-pdf-macros') || document.createElement('style');
+    style.id = 'mdl-pdf-macros';
+    var css = [
+      '@media print {',
+      '  @page { size: auto; margin: 20mm 15mm; }',
+      '  body { line-height: 1.6; orphans: 3; widows: 3; }',
+      '  h1, h2, h3, h4, h5, h6 { break-after: avoid; page-break-after: avoid; }',
+      '  p, li { orphans: 3; widows: 3; }',
+      '  pre, code { break-inside: avoid; page-break-inside: avoid; }',
+      '  table { break-inside: avoid; page-break-inside: avoid; }',
+      '  figure, .mdl-diagram { break-inside: avoid; page-break-inside: avoid; }',
+      '  .mdl-folded { display: none; }',
+      '  #mdl-toc, .mdl-toolbar, .mdl-find-bar, .mdl-sc-panel, #mdl-editor { display: none !important; }',
+      '  body::before, body::after { z-index: 100; pointer-events: none; }',
+    ];
+    var q = String.fromCharCode(34);
+    if (h) css.push('  body::before { content: ' + q + h.replace(new RegExp(q, 'g'), '\\' + q) + q + '; position: fixed; top: 5mm; left: 15mm; right: 15mm; font-size: 9px; color: #666; }');
+    if (f) css.push('  body::after { content: ' + q + f.replace(new RegExp(q, 'g'), '\\' + q) + q + '; position: fixed; bottom: 5mm; left: 15mm; right: 15mm; font-size: 9px; color: #666; }');
+    css.push('}');
+    style.textContent = css.join(String.fromCharCode(10));
+    if (!style.parentNode) document.head.appendChild(style);
+  }
+
   // ---- print ------------------------------------------------------------------
   var printBtn = document.getElementById('mdl-btn-print');
-  if (printBtn) printBtn.addEventListener('click', function () { window.print(); });
+  if (printBtn) printBtn.addEventListener('click', function () {
+    applyPdfMacros();
+    window.print();
+  });
 
   // ---- 📊 export CSV (parity feature) -----------------------------------------
   // Collect every table in the document, post each as raw CSV to the host; it
@@ -950,12 +1111,150 @@
     if (fc) fc.addEventListener('click', closeFind);
   }
 
+  // ---- custom keyboard shortcuts (Cmd/Ctrl+K panel) ------------------------
+  // Default actions; a user override lives in config.json (shortcuts map) and
+  // in localStorage 'mdl-shortcuts'. Format: { '<action>': 'mod+key' } where
+  // mod = ctrl|cmd|alt and key is a single character or F1..F12.
+  var SHORTCUT_DEFAULTS = {
+    'toc': 'ctrl+t',
+    'theme': 'ctrl+d',
+    'find': 'ctrl+f',
+    'wysiwyg': 'ctrl+shift+e',
+    'mindmap': 'ctrl+shift+m',
+    'dual': 'f3',
+    'marp': 'f5',
+    'editor': 'f2',
+    'source': 'ctrl+e',
+  };
+  var SC_KEY = 'mdl-shortcuts';
+  function shortcuts() {
+    var user = {};
+    try { user = JSON.parse(localStorage.getItem(SC_KEY) || '{}'); } catch (e) {}
+    var cfg = (S.cfg && S.cfg.shortcuts) || {};
+    return Object.assign({}, SHORTCUT_DEFAULTS, cfg, user);
+  }
+  // Parse 'ctrl+shift+f' / 'f5' into {ctrl, shift, alt, key}.
+  function parseSc(sh) {
+    var mods = { ctrl: false, shift: false, alt: false };
+    var parts = String(sh || '').toLowerCase().split('+');
+    var key = '';
+    parts.forEach(function (p) {
+      if (p === 'ctrl' || p === 'cmd') mods.ctrl = true;
+      else if (p === 'shift') mods.shift = true;
+      else if (p === 'alt') mods.alt = true;
+      else key = p;
+    });
+    return { mods: mods, key: key };
+  }
+  function matchesSc(e, sh) {
+    var p = parseSc(sh);
+    if (!p.key) return false;
+    var ok = p.key;
+    if (p.key !== 'f1' && p.key !== 'f2' && p.key !== 'f3' && p.key !== 'f5' && p.key !== 'escape') {
+      ok = (e.key || '').toLowerCase();
+    } else {
+      ok = (e.key || '').toLowerCase();
+    }
+    if (ok !== p.key) return false;
+    if (p.mods.ctrl && !(e.ctrlKey || e.metaKey)) return false;
+    if (p.mods.shift && !e.shiftKey) return false;
+    if (p.mods.alt && !e.altKey) return false;
+    if (!p.mods.ctrl && e.ctrlKey && !e.metaKey) return false;
+    return true;
+  }
+  function runShortcutAction(a) {
+    switch (a) {
+      case 'toc': toggleToc(); break;
+      case 'theme': cycleTheme(); break;
+      case 'find': openFind(); break;
+      case 'wysiwyg': if (W) W.enter(); break;
+      case 'mindmap': mm.open ? closeMindmap() : openMindmap(); break;
+      case 'dual': toggleDual(); break;
+      case 'marp': if (marpState.slides && marpState.slides.length) enterMarp(); break;
+      case 'editor': openEditor(); break;
+      case 'source': if (editorOpen) closeSourceEditor(); else openSourceEditor(); break;
+    }
+  }
+  // Cmd/Ctrl+K: show the shortcut panel listing every mapping.
+  var scPanel = null;
+  function buildScPanel() {
+    if (scPanel) return scPanel;
+    scPanel = document.createElement('div');
+    scPanel.id = 'mdl-sc-panel';
+    scPanel.className = 'mdl-sc-panel';
+    scPanel.hidden = true;
+    var map = shortcuts();
+    Object.keys(map).forEach(function (action) {
+      var row = document.createElement('div');
+      row.className = 'mdl-sc-row';
+      var lbl = document.createElement('span');
+      lbl.className = 'mdl-sc-lbl';
+      lbl.textContent = action;
+      var val = document.createElement('span');
+      val.className = 'mdl-sc-val';
+      val.textContent = map[action];
+      row.appendChild(lbl); row.appendChild(val);
+      scPanel.appendChild(row);
+    });
+    var btns = document.createElement('div');
+    btns.className = 'mdl-sc-btns';
+    var reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'mdl-btn';
+    reset.textContent = t('sc-reset', '恢复默认');
+    reset.addEventListener('click', function () {
+      try { localStorage.removeItem(SC_KEY); } catch (e) {}
+      // also clear any config-level overrides the host persisted
+      postConfig({ shortcuts: null });
+      buildScPanel(true);
+      toast(t('sc-reset-done', '已恢复默认快捷键'));
+    });
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'mdl-btn';
+    close.textContent = t('sc-close', '关闭');
+    close.addEventListener('click', function () { scPanel.hidden = true; });
+    btns.appendChild(reset); btns.appendChild(close);
+    scPanel.appendChild(btns);
+    document.body.appendChild(scPanel);
+    return scPanel;
+  }
+  buildScPanel();
+  function openScPanel() { buildScPanel().hidden = false; }
+  function closeScPanel() { if (scPanel) scPanel.hidden = true; }
+  function bindShortcutKeys() {
+    var map = shortcuts();
+    Object.keys(map).forEach(function (action) {
+      var sh = map[action];
+      var p = parseSc(sh);
+      if (!p.key) return;
+      var ev = p.key.charAt(0) === 'f' && p.key.length === 2 ? 'keydown' : 'keydown';
+      document.addEventListener('mdl-sc-' + action, function () { runShortcutAction(action); });
+    });
+  }
   document.addEventListener('keydown', function (e) {
-    // Marp presentation takes priority over every other shortcut while active.
+    // Custom shortcut layer (cmd/ctrl+k opens the panel; other bound combos
+    // dispatch to the actions they were remapped to). Marp presentation still
+    // takes priority over everything while active.
+    var scMap = shortcuts();
+    var foundAction = null;
+    Object.keys(scMap).forEach(function (a) {
+      if (!foundAction && matchesSc(e, scMap[a])) foundAction = a;
+    });
+    if (e.key === 'k' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      scPanel ? (scPanel.hidden ? openScPanel() : closeScPanel()) : null;
+      return;
+    }
     if (marpState.active) {
       if (e.key === 'F5' || e.key === 'Escape') { e.preventDefault(); exitMarp(); }
       else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); nextMarpSlide(); }
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); prevMarpSlide(); }
+      return;
+    }
+    if (foundAction) {
+      e.preventDefault();
+      runShortcutAction(foundAction);
       return;
     }
     if (W && W.isActive()) {
@@ -1440,7 +1739,9 @@
         // 文件从 file:// 打开，Worker 受 CORS 限制，直接走同步渲染。
         var useWorker = document.body.hasAttribute('data-live');
         return (useWorker ? renderInWorker(source) : syncRender(source)).then(function (out) {
-          paintContent(out);
+          // post=true: wire TOC/stats/mermaid/collapse right after the paint
+          // so the native host (empty server body) gets a fully-wired DOM.
+          paintContent(out, true);
         });
       });
     });
@@ -1459,6 +1760,7 @@
     // (a second render yields a different SVG); the dual-view live preview
     // paints into an already-initialised page, so it must re-run them.
     if (post) { buildToc(); renderStat(); renderMermaid(); wireCollapse(); wireCodeLineno(); wireTableFullscreen(); wireTocActive(); wireEquationCopy(); }
+    maybeWrapVBlocks();
     // UI polish: friendly placeholder for an empty doc + scroll-to-top button
     ensureEmptyState(contentEl, out.html || '');
     wireTotop();
@@ -1478,24 +1780,47 @@
   var workerCache = null;
   var workerSeq = 0;
   var workerCallbacks = {};
-  function getWorker() {
-    if (workerCache) return workerCache;
-    var w = new Worker('/assets/renderer-worker.js');
+  var workerBlob = null;
+  function wireWorker(w) {
     w.onmessage = function (e) {
-      var id = e.data && e.data.id;
-      var cb = workerCallbacks[id];
-      if (cb) { delete workerCallbacks[id]; cb(e.data); }
+      var cid = e.data && e.data.id;
+      var cb = workerCallbacks[cid];
+      if (cb) { delete workerCallbacks[cid]; cb(e.data); }
     };
     w.onerror = function () {
-      // worker 加载/运行失败：把所有挂起的请求回退到同步渲染
       var ids = Object.keys(workerCallbacks);
       workerCallbacks = {};
       ids.forEach(function (id) { cbSync(id); });
-      try { w.terminate(); } catch (e) {}
+      try { w.terminate(); } catch (e2) {}
       workerCache = null;
+      if (workerBlob) { URL.revokeObjectURL(workerBlob); workerBlob = null; }
     };
     workerCache = w;
-    return w;
+  }
+  function getWorker() {
+    if (workerCache) return workerCache;
+    // Load the worker via fetch + Blob so it works on both the Node host
+    // (which serves /assets/renderer-worker.js) and the native host without
+    // any cross-origin restrictions.
+    if (workerBlob) {
+      var w = new Worker(workerBlob, { type: 'classic' });
+      wireWorker(w);
+      return w;
+    }
+    fetch('/assets/renderer-worker.js', { cache: 'no-store' })
+      .then(function (r) { return r.text(); })
+      .then(function (txt) {
+        workerBlob = URL.createObjectURL(new Blob([txt], { type: 'application/javascript' }));
+        var w = new Worker(workerBlob, { type: 'classic' });
+        wireWorker(w);
+        workerCache = w;
+      })
+      .catch(function () {
+        // fall back to sync render for all pending + future requests
+        var ids = Object.keys(workerCallbacks);
+        ids.forEach(function (id) { cbSync(id); });
+      });
+    return null;
   }
   function cbSync(id) {
     var cb = workerCallbacks[id];
@@ -1660,6 +1985,236 @@
     if (btn) btn.hidden = false;
   }
 
+  // ---- drag-and-drop file open --------------------------------------------------
+  function wireDragDrop() {
+    var dragDepth = 0;
+    document.addEventListener('dragenter', function (e) {
+      e.preventDefault(); dragDepth++; document.body.classList.add('mdl-drag-over');
+    });
+    document.addEventListener('dragleave', function () {
+      dragDepth--; if (dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('mdl-drag-over'); }
+    });
+    document.addEventListener('dragover', function (e) { e.preventDefault(); });
+    document.addEventListener('drop', function (e) {
+      e.preventDefault(); dragDepth = 0; document.body.classList.remove('mdl-drag-over');
+      var files = e.dataTransfer ? e.dataTransfer.files : null;
+      if (!files || !files.length) return;
+      var f = files[0];
+      if (!/\.md$|\.markdown$/i.test(f.name)) {
+        toast(t('dd-not-md', '仅支持 .md / .markdown 文件'));
+        return;
+      }
+      var isNative = !!(window.chrome && window.chrome.webview);
+      var reader = new FileReader();
+      reader.onload = function () {
+        var text = reader.result;
+        if (isNative) {
+          // POST the dropped file's name + content to /api/open-file so the
+          // C# server swaps its Doc and re-navigates WebView2.
+          fetch('/api/open-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: f.name, content: text })
+          }).then(function (r) { return r.json(); })
+            .then(function (j) {
+              if (j && j.ok) location.reload();
+              else toast(t('dd-open-failed', '无法打开文件：') + (j && j.error ? j.error : f.name));
+            })
+            .catch(function () { toast(t('dd-open-failed', '无法打开文件：') + f.name); });
+        } else {
+          toast(t('dd-opened-static', '已打开（静态模式，不保存）：') + f.name);
+        }
+      };
+      reader.onerror = function () { toast(t('dd-open-failed', '无法打开文件：') + f.name); };
+      reader.readAsText(f);
+    });
+  }
+  wireDragDrop();
+
+  // ---- multi-document tab manager --------------------------------------------------
+  // A lightweight tab strip under the top bar. Each tab remembers its scroll
+  // position; switching tabs swaps the doc via /api/open-file (native) or
+  // re-renders from the saved source (static). Stored in localStorage.
+  var TABS_KEY = 'mdl-tabs-v1';
+  var openTabs = loadTabs();
+
+  function loadTabs() {
+    try {
+      var raw = localStorage.getItem(TABS_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function saveTabs() {
+    try { localStorage.setItem(TABS_KEY, JSON.stringify(openTabs)); } catch (e) { }
+  }
+  function getActiveTab() {
+    for (var i = 0; i < openTabs.length; i++)
+      if (openTabs[i].active) return openTabs[i];
+    return openTabs[0] || null;
+  }
+  function tabPath(t) { return t.path || t.name || ''; }
+  function renderTabStrip() {
+    var bar = document.getElementById('mdl-tab-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'mdl-tab-bar';
+      bar.className = 'mdl-tab-bar';
+      var titleRow = document.getElementById('mdl-title-row');
+      if (titleRow) titleRow.parentNode.insertBefore(bar, titleRow.nextSibling);
+      else document.body.insertBefore(bar, document.body.firstChild);
+    }
+    bar.innerHTML = '';
+    for (var i = 0; i < openTabs.length; i++) {
+      (function (tab, idx) {
+        var el = document.createElement('div');
+        el.className = 'mdl-tab' + (tab.active ? ' mdl-tab-active' : '');
+        el.title = tabPath(tab);
+        var label = document.createElement('span');
+        label.textContent = tab.name || (tabPath(tab).split('/').pop() || tab.name || 'untitled');
+        el.appendChild(label);
+        var close = document.createElement('span');
+        close.className = 'mdl-tab-close';
+        close.textContent = '\u00d7';
+        close.title = t('tab-close', '关闭');
+        close.addEventListener('click', function (e) {
+          e.stopPropagation();
+          closeTab(idx);
+        });
+        el.addEventListener('click', function () { switchTab(idx); });
+        bar.appendChild(el);
+      })(openTabs[i], i);
+    }
+  }
+  function switchTab(idx) {
+    var target = openTabs[idx];
+    if (!target) return;
+    // Save current scroll position before leaving
+    var cur = getActiveTab();
+    if (cur) {
+      var _h = document.body.scrollHeight - window.innerHeight;
+      cur.pos = _h > 0 ? window.scrollY / _h : 0;
+    }
+    // Mark the new tab active
+    for (var i = 0; i < openTabs.length; i++)
+      openTabs[i].active = (i === idx);
+    saveTabs();
+    renderTabStrip();
+    // Navigate to the new doc: native host POSTs /api/open-file; static host re-renders.
+    var isNative = !!(window.chrome && window.chrome.webview);
+    if (isNative && target.path && tabPath(target) !== tabPath(getActiveTab())) {
+      fetch('/api/open-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: target.path })
+      }).then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ok) location.reload();
+        }).catch(function () { });
+    } else if (target.source) {
+      // Static mode: re-render the saved source in place
+      if (typeof clientRender === 'function') clientRender(target.source);
+      else location.reload();
+    } else if (target.path) {
+      location.href = location.pathname + '?doc=' + encodeURIComponent(tabPath(target));
+    }
+    // Restore scroll position after paint
+    setTimeout(function () {
+      if (target.pos) restorePosFrom(target.pos);
+    }, 200);
+  }
+  function closeTab(idx) {
+    openTabs.splice(idx, 1);
+    if (!openTabs.length) { openTabs = [{ path: S.filepath || '', name: S.name || '', active: true }]; }
+    else openTabs[idx < openTabs.length ? idx : 0].active = true;
+    saveTabs();
+    renderTabStrip();
+  }
+  function openTab(path, name, source) {
+    // Deduplicate: if already open, just switch to it
+    for (var i = 0; i < openTabs.length; i++) {
+      if (tabPath(openTabs[i]) === path) { switchTab(i); return; }
+    }
+    for (var j = 0; j < openTabs.length; j++) openTabs[j].active = false;
+    openTabs.push({ path: path, name: name, source: source, active: true, pos: null });
+    saveTabs();
+    renderTabStrip();
+  }
+  function restorePosFrom(v) {
+    if (isFinite(v) && v >= 0 && v <= 1) {
+      var h = document.body.scrollHeight - window.innerHeight;
+      if (h > 0) window.scrollTo(0, v * h);
+    }
+  }
+  // Initialise the tab strip with the current document
+  if (S.filepath || S.name) {
+    openTabs = [{ path: S.filepath || '', name: S.name || 'untitled', active: true, pos: null }];
+    saveTabs();
+  }
+  renderTabStrip();
+
+  // ---- virtual scrolling / lazy rendering ----------------------------------
+  // For very long documents (>200 top-level blocks) we wrap each block in a
+  // <div class="mdl-vblock"> and let an IntersectionObserver trigger the
+  // expensive children (mermaid, KaTeX) only when the block scrolls into
+  // view. The scrollbar is stable because each block carries a data-vh
+  // placeholder height.
+  var VBLOCK_THRESHOLD = 200;  // blocks below this: render everything eagerly
+  var _io = null;              // the single IntersectionObserver instance
+
+  function wrapVBlocks() {
+    var children = Array.prototype.slice.call(contentEl.children);
+    if (children.length < VBLOCK_THRESHOLD) return;   // small doc: skip
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (el.nodeType !== 1) continue;
+      var wrap = document.createElement('div');
+      wrap.className = 'mdl-vblock';
+      wrap.setAttribute('data-lazy', '1');
+      contentEl.replaceChild(wrap, el);
+      wrap.appendChild(el);
+      frag.appendChild(wrap);
+    }
+    contentEl.appendChild(frag);
+    observeVBlocks();
+  }
+
+  function observeVBlocks() {
+    if (!('IntersectionObserver' in window)) {
+      // Fallback: render everything immediately
+      contentEl.querySelectorAll('.mdl-vblock').forEach(function (b) {
+        b.removeAttribute('data-lazy');
+      });
+      renderMermaid();
+      return;
+    }
+    _io = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var e = entries[i];
+        if (!e.isIntersecting) continue;
+        var b = e.target;
+        b.removeAttribute('data-lazy');
+        // Render deferred children inside this block
+        var mms = b.querySelectorAll('x-mermaid');
+        for (var j = 0; j < mms.length; j++) mmRenderOne(mms[j]);
+        _io.unobserve(b);
+      }
+    }, { rootMargin: '400px 0px' });
+
+    contentEl.querySelectorAll('.mdl-vblock[data-lazy]').forEach(function (b) {
+      _io.observe(b);
+    });
+  }
+
+  // Call wrapVBlocks after the main render pass (after liveReload / initial load)
+  // but before mermaid rendering so that only visible blocks get mermaid'd.
+  // This is a no-op for small documents (< 200 blocks).
+  function maybeWrapVBlocks() {
+    if (contentEl && contentEl.children.length >= VBLOCK_THRESHOLD)
+      wrapVBlocks();
+  }
+
   // ---- init ----------------------------------------------------------------
   function init() {
   if (document.body.hasAttribute('data-live')) {
@@ -1674,6 +2229,10 @@
     posT = setTimeout(function () { posT = null; savePos(); }, 300);
   }, { passive: true });
   window.addEventListener('beforeunload', savePos);
+  // All wiring is idempotent (dataset flags), so run it unconditionally on
+  // both hosts: the node host's server-rendered body already carries it from
+  // the page template, the native host renders client-side first and this
+  // picks up the result.
   buildToc();
   wireTocActive();
   wireCollapse();

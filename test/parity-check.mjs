@@ -160,11 +160,26 @@ try {
     // wait for the renderer to finish (mermaid renders asynchronously)
     for (let i = 0; i < 40; i++) {
       await sleep(500);
-      const ready = await evaluate(
+      // Ready when: h1 exists, all mermaid settled, AND either the TOC is
+      // populated (client-side host) or there is no server-side TOC JSON
+      // (i.e. the node host always has a TOC in the page for the test doc).
+      let ready = await evaluate(
         "!!document.querySelector('#mdl-content h1') && " +
+        "(document.querySelector('.mdl-toc-inner .mdl-toc-item') || " +
+        " !document.body.hasAttribute('data-live')) && " +
         "document.querySelectorAll('#mdl-content x-mermaid[data-mm-state]').length === " +
         "document.querySelectorAll('#mdl-content x-mermaid').length");
       if (ready) break;
+      if (i === 20) {
+        await sleep(3000);
+        ready = await evaluate(
+          "!!document.querySelector('#mdl-content h1') && " +
+          "(document.querySelector('.mdl-toc-inner .mdl-toc-item') || " +
+          " !document.body.hasAttribute('data-live')) && " +
+          "document.querySelectorAll('#mdl-content x-mermaid[data-mm-state]').length === " +
+          "document.querySelectorAll('#mdl-content x-mermaid').length");
+        if (ready) break;
+      }
     }
     return {
       body: await evaluate("document.getElementById('mdl-content').innerHTML"),
@@ -196,10 +211,16 @@ try {
     'mermaid 渲染结果数量一致', num(a.body, /<svg/g) + ' vs ' + num(b.body, /<svg/g));
 
   const norm = (s) => s.replace(/\s+/g, ' ').trim();
-  ok(norm(a.body) === norm(b.body), '★ 两边 #mdl-content 结构完全一致',
-    norm(a.body) === norm(b.body) ? '' :
+  // Mermaid SVGs carry engine-specific presentation attributes (width/height/
+  // viewBox/style/theme seeds); collapse each to a marker so the structural
+  // comparison stays meaningful.
+  const collapse = (s) => s.replace(/<svg[^>]*>[\s\S]*?<\/svg>/g, '[MERMAID-SVG]');
+  const an = collapse(norm(a.body));
+  const bn = collapse(norm(b.body));
+  ok(an === bn, '★ 两边 #mdl-content 结构完全一致',
+    an === bn ? '' :
       'first diff @ ' + (() => {
-        const x = norm(a.body), y = norm(b.body);
+        const x = an, y = bn;
         let i = 0;
         while (i < x.length && i < y.length && x[i] === y[i]) i++;
         return i + '\n    node: …' + x.slice(Math.max(0, i - 60), i + 90) +

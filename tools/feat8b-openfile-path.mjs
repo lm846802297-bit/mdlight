@@ -1,0 +1,8 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+let sv = readFileSync('native/Server.cs', 'utf8');
+const old = '            string name = Json.GetString(body, "name");\n            string content = Json.GetString(body, "content");\n            if (string.IsNullOrEmpty(name) || content == null)\n            {\n                SendError(res, 400, "name and content required");\n                return;\n            }';
+const nw = '            // Two call shapes:\n            //   {path: "..."}  — switch to an existing file (tab manager)\n            //   {name, content} — write a dropped new file into the doc dir\n            string p = Json.GetString(body, "path");\n            if (!string.IsNullOrEmpty(p))\n            {\n                try { p = System.IO.Path.GetFullPath(p); }\n                catch (Exception) { }\n                if (!System.IO.File.Exists(p))\n                {\n                    SendError(res, 404, "file not found");\n                    return;\n                }\n                SwapDoc(new Doc(p));\n                SendJson(res, "{\\"ok\\":true,\\"path\\":" + Util.JsonStr(p) + "}");\n                return;\n            }\n            string name = Json.GetString(body, "name");\n            string content = Json.GetString(body, "content");\n            if (string.IsNullOrEmpty(name) || content == null)\n            {\n                SendError(res, 400, "path or (name+content) required");\n                return;\n            }';
+if (sv.indexOf(old) < 0) { console.log('anchor not found'); process.exit(1); }
+sv = sv.replace(old, nw, 1);
+writeFileSync('native/Server.cs', sv);
+console.log('feat8b done');

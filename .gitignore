@@ -27,3 +27,10 @@ config.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# scratch/debug probe scripts (not shipped, dev-only)
+tools/exe-probe*.mjs
+tools/exe-live.mjs
+tools/edge-find.mjs
+tools/find-edge.mjs
+tools/find-msedge.ps1
