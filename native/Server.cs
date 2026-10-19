@@ -1158,51 +1158,45 @@ namespace Mdlight
             return null;
         }
 
-        /// <summary>Finds `"key" :` and returns the index just past the colon.
-        /// Skips whole string values (escape-aware), so a `"base":` that happens
-        /// to appear *inside* the `source` value is not mistaken for the field.
-        /// Assumes a flat object ({source, base, force}).</summary>
+        /// <summary>Finds the value of a top-level key in a flat JSON object.
+        /// Walks the string once; a quoted string whose previous significant
+        /// character is { or , and which is followed by : counts as a key.
+        /// A string value that spells the key is never mistaken for the key.</summary>
         private static int FindValue(string json, string key)
         {
             string needle = "\"" + key + "\"";
             int n = json.Length;
             int i = 0;
+            bool atKeyPos = true;  // true at start and right after { [ ,
             while (i < n)
             {
-                if (json[i] == '"')
+                char c = json[i];
+                if (char.IsWhiteSpace(c)) { i++; continue; }
+                if (c == '{' || c == '[') { i++; atKeyPos = true; continue; }
+                if (c == '}' || c == ']' || c == ':') { i++; atKeyPos = false; continue; }
+                if (c == ',') { i++; atKeyPos = true; continue; }
+                if (c == '"')
                 {
-                    // candidate key start — read to the closing quote
                     int j = i + 1;
-                    while (j < n && json[j] != '"')
+                    while (j < n)
                     {
-                        if (json[j] == '\\') j++;   // escaped char inside the string
+                        if (json[j] == '\\') { j += 2; continue; }
+                        if (json[j] == '"') break;
                         j++;
                     }
-                    if (j < n && string.CompareOrdinal(json, i, needle, 0, needle.Length) == 0)
+                    if (atKeyPos && json.Substring(i, j - i + 1) == needle)
                     {
-                        // A string *value* can be spelled exactly like the key we
-                        // are looking for ({"x":"source",...}), so only accept a
-                        // real key: previous significant char is '{' or ',', and
-                        // the next significant char is ':'.
-                        int prev = i - 1;
-                        while (prev >= 0 && (json[prev] == ' ' || json[prev] == '\t' ||
-                                             json[prev] == '\r' || json[prev] == '\n')) prev--;
-                        int next = j + 1;
-                        while (next < n && (json[next] == ' ' || json[next] == '\t' ||
-                                            json[next] == '\r' || json[next] == '\n')) next++;
-                        if (prev >= 0 && (json[prev] == '{' || json[prev] == ',')
-                            && next < n && json[next] == ':')
-                        {
-                            return next + 1;
-                        }
+                        int k = j + 1;
+                        while (k < n && char.IsWhiteSpace(json[k])) k++;
+                        if (k < n && json[k] == ':') return k + 1;
                     }
-                    // not our key — skip the whole string value and keep looking
                     i = j + 1;
+                    atKeyPos = false;
+                    continue;
                 }
-                else
-                {
-                    i++;
-                }
+                while (i < n && json[i] != ',' && json[i] != '}' &&
+                       json[i] != ']' && json[i] != ':' && !char.IsWhiteSpace(json[i])) i++;
+                atKeyPos = false;
             }
             return -1;
         }
