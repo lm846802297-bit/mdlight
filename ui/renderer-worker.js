@@ -28,6 +28,8 @@ self.onmessage = function (e) {
       html: out.html,
       headings: out.headings || [],
       mermaidCount: out.mermaidCount || 0,
+      marp: out.marp || null,
+      slides: out.slides || null,
     });
   } catch (err) {
     // Post the failure back so the main thread can fall back to a synchronous

@@ -26,6 +26,8 @@
       'csv-exported': 'Exported {n} CSV file(s)',
       'pdf-window-only': 'PDF export needs the app window',
       'mindmap': 'Outline mind-map (Ctrl+Shift+M)',
+      'marp': 'Presentation (F5)',
+      'marp-ready': 'Marp slides detected ({n}); press F5 to present',
       'to-top': 'Back to top',
       'empty-title': 'Nothing here yet',
       'empty-hint': 'Open or edit a Markdown file on the left to get started',

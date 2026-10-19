@@ -110,12 +110,13 @@ set MD_EDITOR=code --goto "{file}:{line}"
 | 新 | 用户没有外部编辑器（无 VS Code/Notepad++ 等） | **源码视图（v0.7.1，`Ctrl+E`）**：并入"直接编辑"工具栏，点"源码"或 `Ctrl+E` 切到 markdown 源码面板（textarea），Ctrl+S 保存；sha256 冲突检测防止误覆盖，保存后预览自动刷新。用于 WYSIWYG 序列化不可靠的复杂表格/嵌套结构。与 ✍ 是**同一文件的两个视图**，不再占独立顶栏按钮 | `GET /api/source` + `POST /api/save`（11 接口断言全通过） |
 | 新 | 同类软件的 F2 live-edit（所见即所得）是付费会员卖点 | **直接编辑（WYSIWYG，v0.7.0）**：`Ctrl+Shift+E` 或 ✍ 进入，点段落就地改字；工具栏 16 个按钮（撤销/重做/标题/粗斜删除线/行内代码/列表/引用/公式/链接/图片/表格）；`ui/mdserial.js` 把 DOM 序列化回 markdown 且**保留公式/代码/mermaid/callout 块**；Ctrl+S 保存 → 预览自动重载 | `test/wysiwyg-check.mjs` 29 项真实浏览器断言，含编辑→保存→磁盘落盘→重载往返 |
 | 9 | 不支持 mermaid 图表（` ```mermaid ` 当普通代码块） | **按需 mermaid 图表**：识别 37 种图表类型，只加载文档真正用到的那几种；渲染失败显示源码+报错，不出现空白框 | `test/mermaid-check.mjs` 25 项 + `test/mermaid-browser.mjs` 19 项（真实浏览器） |
+ | 新 | 没有 PPT 演示模式，幻灯片文档只能逐行滚动阅读 | **PPT 演示模式（Marp，v0.8.0）**：文档 YAML frontmatter 写 `marp: true` 后按 `---` 自动分页；F5 全屏放映（顶栏 ▶ 按钮同样进入），方向键/空格翻页，页脚支持 `{title}/{page}/{total}/{date}` 宏，演讲者计时器，Esc 退出；阅读模式显示全部幻灯片且可正常跳转 | `test/marp-check.mjs` 24 项（含无头 Edge 端到端） |
 
 另附原生能力：显示/行内公式、**AI 方言定界符 `\(...\)` / `\[...\]`**（ChatGPT/Claude/Pandoc
 的输出即贴即渲染，两种方言自由混用）、mhchem 化学式、`\newcommand` 宏（含带参数宏）、callout（6 类）、
 任务列表、`[[双链]]`（点击复制语法）、表格对齐、TOC（滚动高亮）、行号定位（F2）、
 **源码视图（Ctrl+E，编辑态里的源码切换）**、**直接编辑（Ctrl+Shift+E，所见即所得）**、
-**按需 mermaid 图表**、
+**按需 mermaid 图表**、**PPT 演示模式（Marp，F5）**、
 保存即热重载（**保持滚动位置**）、亮/暗/羊皮纸主题、打印样式。
 
 ## mermaid 图表：为什么“按需”很重要

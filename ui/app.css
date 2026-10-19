@@ -827,3 +827,70 @@ html { scroll-behavior: smooth; }
 }
 .mdl-find-hit { border-radius: 3px; }
 .mdl-find-hit--active { border-radius: 3px; }
+
+/* --- Marp / PPT presentation mode ---------------------------------------- */
+/* Reading mode hides the horizontal-rule page breaks so a deck reads like a
+   normal document; presentation mode shows one slide at a time full-screen. */
+.mdl-content hr.mdl-marp-break { display: none; }
+
+#mdl-btn-marp { font-size: 14px; line-height: 1; }
+#mdl-btn-marp:hover { color: var(--accent); border-color: var(--accent); }
+
+#mdl-marp-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #0b0d10;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+#mdl-marp-overlay[hidden] { display: none; }
+
+#mdl-marp-stage {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  width: 100%; overflow: hidden; padding: 24px;
+  box-sizing: border-box;
+}
+
+/* The slide keeps a fixed aspect ratio and scales to fit the viewport. */
+#mdl-marp-slide {
+  background: #fff; color: #1a1a1a;
+  box-sizing: border-box; overflow: hidden;
+  border-radius: 4px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.55);
+  padding: 48px 56px;
+  font-size: 22px; line-height: 1.55;
+  /* 16:9 default; overridden per-size below */
+  aspect-ratio: 16 / 9;
+  max-width: 100%; max-height: 100%;
+}
+#mdl-marp-slide.mdl-slide--a4 { aspect-ratio: 297 / 210; }
+#mdl-marp-slide.mdl-slide--a4-portrait { aspect-ratio: 210 / 297; }
+#mdl-marp-slide.mdl-slide--4\3 { aspect-ratio: 4 / 3; }
+#mdl-marp-slide.mdl-slide--16\3a10 { aspect-ratio: 16 / 10; }
+#mdl-marp-slide.mdl-slide--21\3a9 { aspect-ratio: 21 / 9; }
+
+/* Inside a slide: keep KaTeX / mermaid / code readable on the white deck. */
+#mdl-marp-slide h1 { font-size: 2.2em; margin: 0 0 .4em; }
+#mdl-marp-slide h2 { font-size: 1.6em; margin: 0 0 .4em; }
+#mdl-marp-slide h3 { font-size: 1.25em; margin: 0 0 .3em; }
+#mdl-marp-slide p { margin: .5em 0; }
+#mdl-marp-slide ul, #mdl-marp-slide ol { margin: .5em 0; padding-left: 1.4em; }
+#mdl-marp-slide code { font-size: .85em; background: #f4f4f6; padding: 1px 5px; border-radius: 3px; }
+#mdl-marp-slide pre { background: #f4f4f6; padding: 14px 16px; border-radius: 6px; overflow: hidden; }
+#mdl-marp-slide pre code { background: transparent; padding: 0; }
+#mdl-marp-slide table { border-collapse: collapse; margin: .6em 0; }
+#mdl-marp-slide th, #mdl-marp-slide td { border: 1px solid #ccc; padding: 6px 10px; }
+#mdl-marp-slide x-mermaid { max-width: 100%; }
+#mdl-marp-slide .mdl-math-error { background: #fdecec; color: #b00020; border-color: #f5c6c6; }
+#mdl-marp-slide .mdl-task-box { display: none; }
+
+/* Speaker HUD: header / footer slots + page counter + elapsed timer. */
+#mdl-marp-hud {
+  position: absolute; inset: 0; pointer-events: none;
+  color: #cfd3da; font-size: 13px; font-variant-numeric: tabular-nums;
+}
+#mdl-marp-hud .mdl-marp-hud--header { position: absolute; top: 10px; left: 16px; right: 16px; text-align: center; opacity: .7; }
+#mdl-marp-hud .mdl-marp-hud--footer { position: absolute; bottom: 10px; left: 16px; right: 16px; text-align: center; opacity: .7; }
+#mdl-marp-hud .mdl-marp-hud-page { position: absolute; bottom: 10px; right: 16px; opacity: .85; }
+#mdl-marp-hud .mdl-marp-hud-timer { position: absolute; bottom: 10px; left: 16px; opacity: .85; }
+#mdl-marp-hud .mdl-marp-hud--header:empty,
+#mdl-marp-hud .mdl-marp-hud--footer:empty { display: none; }

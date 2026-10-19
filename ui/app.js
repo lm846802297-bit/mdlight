@@ -531,6 +531,8 @@
   function openMindmap() { renderMindmap(); }
   var mindmapBtn = document.getElementById('mdl-btn-mindmap');
   if (mindmapBtn) mindmapBtn.addEventListener('click', openMindmap);
+  var marpBtn = document.getElementById('mdl-btn-marp');
+  if (marpBtn) marpBtn.addEventListener('click', function () { if (marpState.slides && marpState.slides.length) enterMarp(); });
   var mmClose = document.getElementById('mdl-mindmap-close');
   if (mmClose) mmClose.addEventListener('click', closeMindmap);
   var mmBody = document.getElementById('mdl-mindmap-body');
@@ -949,6 +951,13 @@
   }
 
   document.addEventListener('keydown', function (e) {
+    // Marp presentation takes priority over every other shortcut while active.
+    if (marpState.active) {
+      if (e.key === 'F5' || e.key === 'Escape') { e.preventDefault(); exitMarp(); }
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); nextMarpSlide(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); prevMarpSlide(); }
+      return;
+    }
     if (W && W.isActive()) {
       if (e.key === 'Escape') { e.preventDefault(); W.exit(false); }
       else if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); W.save(); }
@@ -964,6 +973,7 @@
     }
     else if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(); }
     else if (e.key === 'F3') { e.preventDefault(); toggleDual(); }
+    else if (e.key === 'F5') { e.preventDefault(); if (marpState.slides && marpState.slides.length) enterMarp(); }
     else if (e.key === 'F2') { e.preventDefault(); openEditor(); }
     else if (e.ctrlKey && e.key.toLowerCase() === 't') { e.preventDefault(); toggleToc(); }
     else if (e.ctrlKey && e.key.toLowerCase() === 'd') { e.preventDefault(); cycleTheme(); }
@@ -1452,6 +1462,15 @@
     // UI polish: friendly placeholder for an empty doc + scroll-to-top button
     ensureEmptyState(contentEl, out.html || '');
     wireTotop();
+    // Marp deck? The renderer returns slides when the doc declared marp: true.
+    if (out && out.marp && out.slides && out.slides.length) {
+      marpState.slides = out.slides;
+      marpState.marp = out.marp;
+      setupMarp();
+    } else {
+      marpState.slides = null;
+      marpState.marp = null;
+    }
   }
 
   // One cached Worker reused across live-reloads; a request id tags each reply
@@ -1496,7 +1515,7 @@
       workerCallbacks[id] = function (data) {
         clearTimeout(timer);
         if (!data) { resolve(syncRender(source)); return; }
-        if (data.ok) resolve({ html: data.html, headings: data.headings, mermaidCount: data.mermaidCount });
+        if (data.ok) resolve({ html: data.html, headings: data.headings, mermaidCount: data.mermaidCount, marp: data.marp, slides: data.slides });
         else resolve(syncRender(source));
       };
       try {
@@ -1509,7 +1528,136 @@
   }
   function syncRender(source) {
     var out = window.MDLRenderer.render(String(source || ''), { hardBreaks: !!(S.cfg && S.cfg.hardBreaks) });
-    return Promise.resolve({ html: out.html, headings: out.headings || [], mermaidCount: out.mermaidCount || 0 });
+    return Promise.resolve({ html: out.html, headings: out.headings || [], mermaidCount: out.mermaidCount || 0, marp: out.marp || null, slides: out.slides || null });
+  }
+
+  // ---- Marp / PPT presentation mode ------------------------------------------
+  // When a document declares `marp: true` in YAML frontmatter, the renderer
+  // returns per-slide HTML (`out.slides`) plus deck config (`out.marp`). We then
+  // show a full-screen overlay paged with F5 / arrows / space — the same UX
+  // SuperGoodViewer and Marp offer. Header/footer support the Marp macros
+  // {title} {page} {total} {date}.
+  var marpState = { active: false, slides: null, marp: null, idx: 0, timer: null, timerStart: 0, notified: false };
+  var marpOverlay = null, marpSlideEl = null, marpHudEl = null;
+  var marpPageEl = null, marpTimerEl = null, marpHeaderEl = null, marpFooterEl = null;
+
+  function marpRatio(size) {
+    var m = String(size || '16:9').toLowerCase().replace(/\s+/g, '');
+    if (m === 'a4' || m === 'a4-landscape') return { w: 297, h: 210 };
+    if (m === 'a4-portrait') return { w: 210, h: 297 };
+    var parts = String(m).split(':');
+    var w = parseFloat(parts[0]), h = parseFloat(parts[1]);
+    if (!w || !h) return { w: 16, h: 9 };
+    return { w: w, h: h };
+  }
+
+  function marpMacro(str, idx, total, title) {
+    if (!str) return '';
+    return String(str)
+      .replace(/\{title\}/g, title || '')
+      .replace(/\{page\}/g, String(idx + 1))
+      .replace(/\{total\}/g, String(total))
+      .replace(/\{date\}/g, new Date().toLocaleDateString());
+  }
+
+  function buildMarpOverlay() {
+    marpOverlay = document.createElement('div');
+    marpOverlay.id = 'mdl-marp-overlay';
+    marpOverlay.hidden = true;
+    marpOverlay.tabIndex = -1;
+    var stage = document.createElement('div');
+    stage.id = 'mdl-marp-stage';
+    marpSlideEl = document.createElement('div');
+    marpSlideEl.id = 'mdl-marp-slide';
+    stage.appendChild(marpSlideEl);
+    marpOverlay.appendChild(stage);
+    var hud = document.createElement('div');
+    hud.id = 'mdl-marp-hud';
+    marpHeaderEl = document.createElement('div');
+    marpHeaderEl.id = 'mdl-marp-hud-header';
+    marpHeaderEl.className = 'mdl-marp-hud-slot mdl-marp-hud--header';
+    marpFooterEl = document.createElement('div');
+    marpFooterEl.id = 'mdl-marp-hud-footer';
+    marpFooterEl.className = 'mdl-marp-hud-slot mdl-marp-hud--footer';
+    marpPageEl = document.createElement('div');
+    marpPageEl.id = 'mdl-marp-hud-page';
+    marpPageEl.className = 'mdl-marp-hud-page';
+    marpTimerEl = document.createElement('div');
+    marpTimerEl.id = 'mdl-marp-hud-timer';
+    marpTimerEl.className = 'mdl-marp-hud-timer';
+    hud.appendChild(marpHeaderEl);
+    hud.appendChild(marpFooterEl);
+    hud.appendChild(marpPageEl);
+    hud.appendChild(marpTimerEl);
+    marpOverlay.appendChild(hud);
+    document.body.appendChild(marpOverlay);
+    // Click anywhere advances (common in presenter tools)
+    marpOverlay.addEventListener('click', nextMarpSlide);
+    marpOverlay.addEventListener('dblclick', function (e) { e.stopPropagation(); exitMarp(); });
+  }
+
+  function renderMarpSlide() {
+    if (!marpState.slides || !marpState.slides.length) return;
+    var marp = marpState.marp || {};
+    var html = marpState.slides[marpState.idx] || '';
+    marpSlideEl.innerHTML = html;
+    marpSlideEl.className = 'mdl-slide--' + String(marp.size || '16:9').replace(/\s+/g, '-').toLowerCase();
+    marpPageEl.textContent = (marpState.idx + 1) + ' / ' + marpState.slides.length;
+    marpHeaderEl.textContent = marpMacro(marp.header, marpState.idx, marpState.slides.length, marpState.title);
+    marpFooterEl.textContent = marpMacro(marp.footer, marpState.idx, marpState.slides.length, marpState.title);
+    // Render mermaid inside the visible slide (lazy, only the active page)
+    if (typeof renderMermaid === 'function') renderMermaid();
+  }
+
+  function enterMarp() {
+    if (!marpState.slides || !marpState.slides.length) return;
+    if (!marpOverlay) buildMarpOverlay();
+    marpState.active = true;
+    marpState.idx = 0;
+    marpOverlay.hidden = false;
+    try { if (document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen(); } catch (e) { /* fullscreen may be denied */ }
+    renderMarpSlide();
+    startMarpTimer();
+  }
+
+  function exitMarp() {
+    marpState.active = false;
+    if (marpOverlay) marpOverlay.hidden = true;
+    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (e) { /* ignore */ }
+    stopMarpTimer();
+  }
+
+  function nextMarpSlide() {
+    if (!marpState.active) return;
+    if (marpState.idx < marpState.slides.length - 1) { marpState.idx++; renderMarpSlide(); }
+  }
+  function prevMarpSlide() {
+    if (!marpState.active) return;
+    if (marpState.idx > 0) { marpState.idx--; renderMarpSlide(); }
+  }
+  function startMarpTimer() {
+    marpState.timerStart = Date.now();
+    clearInterval(marpState.timer);
+    marpState.timer = setInterval(function () {
+      if (!marpState.active || !marpTimerEl) return;
+      var s = Math.floor((Date.now() - marpState.timerStart) / 1000);
+      var m = Math.floor(s / 60);
+      marpTimerEl.textContent = m + ':' + String(s % 60).padStart(2, '0');
+    }, 1000);
+  }
+  function stopMarpTimer() {
+    clearInterval(marpState.timer);
+    marpState.timer = null;
+    if (marpTimerEl) marpTimerEl.textContent = '';
+  }
+
+  function setupMarp() {
+    if (!marpState.notified) {
+      marpState.notified = true;
+      toast(tf('marp-ready', '检测到 Marp 幻灯片（{n} 页），按 F5 放映', { n: String(marpState.slides.length) }));
+    }
+    var btn = document.getElementById('mdl-btn-marp');
+    if (btn) btn.hidden = false;
   }
 
   // ---- init ----------------------------------------------------------------
@@ -1538,6 +1686,7 @@
   ensureEmptyState(contentEl, contentEl.innerHTML);
   wireTotop();
   fileEl.textContent = (S.filepath || '').split(/[\\\\/]/).pop() || '';
+  marpState.title = (S.toc && S.toc[0] && S.toc[0].text) || fileEl.textContent;
   // Restore the read position after the rendered DOM settles (KaTeX / images
   // change height asynchronously).
   setTimeout(restorePos, 200);

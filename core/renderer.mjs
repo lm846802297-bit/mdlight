@@ -19,6 +19,54 @@ function escapeHtml(s) {
 
 const CJK_RE = /[\u2E80-\u2EFF\u3000-\u303F\u3040-\u30FF\u3100-\u312F\u3130-\u318F\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF]/;
 
+// ---------------------------------------------------------------------------
+// Marp / PPT presentation support
+//
+// A document becomes a slide deck when its YAML frontmatter declares
+// `marp: true`. Horizontal rules (`---`) after the frontmatter then separate
+// slides, mirroring the Marp spec that SuperGoodViewer also follows.
+
+const YAML_BOOL = /^(true|false|yes|no|1|0)$/i;
+const YAML_STRIP_QUOTES = /^(['"])(.*)\1$/;
+
+/** Parse leading YAML frontmatter (`---\nkey: value\n---`). Returns null when
+ *  absent. Only simple `key: value` pairs are supported — enough for Marp. */
+function parseYamlFrontmatter(src) {
+  const m = String(src).match(/^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/);
+  if (!m) return null;
+  const fm = {};
+  const lines = m[1].split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const kv = lines[i].match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
+    if (!kv) continue;
+    let v = kv[2].trim();
+    const q = YAML_STRIP_QUOTES.exec(v);
+    if (q) v = q[2];
+    fm[kv[1]] = v;
+  }
+  return { fm, body: src.slice(m[0].length) };
+}
+
+/** Split a markdown body on Marp slide boundaries (`---` alone on a line).
+ *  Returns the chunks; empty chunks are dropped. */
+function splitSlides(body) {
+  const slides = [];
+  let cur = [];
+  for (const line of String(body).split(/\r?\n/)) {
+    if (/^\s*---\s*$/.test(line)) {
+      if (cur.some((l) => l.trim())) slides.push(cur.join('\n'));
+      cur = [];
+    } else {
+      cur.push(line);
+    }
+  }
+  if (cur.some((l) => l.trim())) slides.push(cur.join('\n'));
+  return slides;
+}
+
+/** Read a Marp boolean frontmatter value. */
+function yamlBool(v) { return YAML_BOOL.test(String(v)) && /^(true|yes|1)$/i.test(String(v)); }
+
 /** Wrap runs of raw CJK chars in math source into \text{...} so KaTeX stops
  *  erroring on CJK-in-math (fix for original flaw #2b). */
 function cjkWrap(text) {
@@ -508,7 +556,35 @@ export function makeRenderer(opts) {
       // A UTF-8 BOM (U+FEFF) is invisible but markdown-it treats it as a
       // character, so "# title" on line 1 becomes a paragraph and the first
       // heading is lost. Notepad saves with BOM by default — strip it.
-      const clean = typeof src === 'string' && src.charCodeAt(0) === 0xFEFF ? src.slice(1) : src;
+      let clean = typeof src === 'string' && src.charCodeAt(0) === 0xFEFF ? src.slice(1) : src;
+
+      // Marp / PPT: detect the frontmatter and, when `marp: true`, render each
+      // slide independently so the UI can page through them. Every slide reuses
+      // the same macro table / slug set, so equations and anchors stay stable.
+      const parsed = parseYamlFrontmatter(clean);
+      if (parsed && yamlBool(parsed.fm.marp)) {
+        headings.length = 0; // per-slide headings aren't a document TOC
+        slugSeen.clear();
+        const marp = {
+          size: parsed.fm.size || '16:9',
+          paginate: yamlBool(parsed.fm.paginate),
+          header: parsed.fm.header || '',
+          footer: parsed.fm.footer || '',
+          theme: parsed.fm.theme || '',
+        };
+        const chunks = splitSlides(parsed.body);
+        if (!chunks.length) chunks.push('');
+        const slides = chunks.map((chunk) => md.render(chunk));
+        const html = slides.join('<hr class="mdl-marp-break">');
+        return {
+          html,
+          headings: headings.slice(),
+          mermaidCount,
+          marp,
+          slides,
+        };
+      }
+
       const html = md.render(clean);
       return { html, headings: headings.slice(), mermaidCount };
     },

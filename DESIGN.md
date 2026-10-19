@@ -1,8 +1,8 @@
 # mdlight — 方案定稿
 
-> **状态：✅ 已实现并通过全部验证（2026-10-18，v0.7.0）** — `npm test` 共 **176 项断言全绿**：
+> **状态：✅ 已实现并通过全部验证（2026-10-24，v0.8.0）** — `npm test` 共 **359 + 24 项断言全绿**：
 > 51 渲染 + 25 宏 + 17 dist 独立运行 + 12 Node/native 渲染奇偶校验 +
-> 45 原生 exe 自足（真实浏览器）+ **26 WYSIWYG 直接编辑（真实浏览器，含编辑→保存→重载往返）**。
+> 45 原生 exe 自足（真实浏览器）+ 29 WYSIWYG 直接编辑 + 11 配置 + 22 安全加固 + 94 功能特性 + 9 公式序列化/配置 + **24 PPT 演示模式（Marp，含无头 Edge 端到端）**。
 > 实现细节以代码与 README.md 为准。
 > 一个从零实现的开源本地 Markdown 阅读器。架构思想参考业界公开工程模式
 > （本地服务器 + WebView 壳 + 内嵌前端资源 + SSE 热重载 + 行号埋点），**不包含任何
@@ -34,6 +34,8 @@
 | 渲染位置双轨（v0.6.0） | **Node 版服务端渲染 / native 版浏览器端渲染，产出必须逐字节一致** | 同一份 `core/renderer.mjs`：Node 路线在服务端跑，native 路线用 esbuild 打成浏览器 bundle（`renderer.js` 609 KB）在 WebView2 里跑。两条路共享同一套 KaTeX/hljs/mermaid 语义，若出现分歧会让"同一文档两种打开方式结果不同"。`test/parity-check.mjs` 用同一 headless 浏览器读取两路 DOM 断言结构与统计全同（12 项全绿）——过程中修过一处服务端统计子串匹配 bug（`x-equation` 误数闭标签 ×2、`mdl-math-error` 命中 4 个类名 ×4），对齐到客户端的 DOM 计数 |
 | 安全加固（v0.7.1） | **同源校验守全部 `/api/*` + `/events`**，保存/配置写入加锁 | `127.0.0.1` 只挡住远端，挡不住**同机任意网页**发起的 CORS 简单请求（`text/plain` 无预检）——此前任何站点都能 POST `/api/save` 覆盖用户正开着的文档。校验规则：`Sec-Fetch-Site` 必须 `same-origin`/`none`，带 `Origin` 时必须等于自己的端口，否则 403。同轮修的 `Doc.Save` 并发（固定 tmp 名 + 先删原件的 fallback 可能真删掉文档）改为加锁 + GUID tmp + 永不先删原件；`Config.Set` 同理。每条都有 `test/harden-check.mjs` 回归（22 项，覆盖 Node/native 两条路线） |
 | native 渲染性能（v0.7.1） | **Web Worker 离线程渲染 + 渐进占位**，主线程不被 KaTeX 阻塞 | native 端无 Node，只能靠浏览器渲染——文档一大会卡死主线程（白屏、无法滚动）。把整条管线（markdown-it + KaTeX `renderToString` + hljs）搬进 Web Worker：这些全是**纯字符串工作、不碰 DOM**，天然能在后台线程跑。先往 `<pre class="mdl-source-preview">` 塞 markdown 原文让浏览器 paint 一帧（用户立刻看到文档已加载），再异步跑 Worker、`innerHTML` 替换。**实测（745 KB / 12000 公式，native exe + headless Edge）**：渲染 5.6 s 期间主线程 37 帧、36 帧 <20 ms（可滚动可交互），而同步渲染全程 0 帧白屏；剩的约 967 ms 单次长帧是浏览器解析 27 MB 渲染结果的硬成本。实现：`ui/renderer-worker.js`（`importScripts` 加载 `renderer.js`，esbuild IIFE 的 `MDLRenderer` 全局在 Worker 里同样成立）+ `app.js` 的 `renderInWorker()`（**缓存 Worker 复用**、请求 ID 丢弃过期响应、60 s 超时回退同步）。file:// 导出的单文件因 CORS 无法用 Worker，`data-live` 为假时直接走同步渲染 |
+| PPT 演示模式（v0.8.0） | **Marp 语法：frontmatter `marp: true` + `---` 分页**，F5 全屏放映 + 演讲者 HUD | 同类软件把幻灯片做成独立渲染管线（Typst/PDFium）。我们只做最薄的一层：复用同一渲染器，frontmatter 声明后按 `---` 切页，阅读模式显示全部页，放映模式全屏逐页 + 页脚宏 + 计时器。不引入任何新依赖 |
+
 
 ## 2. 架构
 

@@ -35,7 +35,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (!fileArg && !a.startsWith('-')) fileArg = a;
 }
 
-const VERSION = '0.7.1';
+const VERSION = '0.8.0';
 
 if (wantHelp || (!fileArg && !wantVersion)) {
   console.log(`mdlight ${VERSION} — 轻量、离线、零遥测的本地 Markdown 阅读器
