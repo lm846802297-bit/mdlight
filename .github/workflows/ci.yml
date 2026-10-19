@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Some tests (native-check, feat-check, wysiwyg-check) exercise the
+      # C#/WebView2 host via the built exe. The Windows runner has Edge but
+      # not always the WebView2 runtime; install it explicitly.
+      - name: Install WebView2 Runtime
+        run: |
+          $url = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703'
+          $installer = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebView2Setup.exe'
+          Invoke-WebRequest -Uri $url -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList '/silent /install' -Wait
+          echo "WebView2 runtime installed"
+
+      - name: Verify WebView2 DLLs present
+        run: |
+          if (-not (Test-Path 'vendor/webview2/Microsoft.Web.WebView2.Core.dll')) {
+            echo "::error::vendor/webview2 DLLs missing; run 'node tools/fetch-webview2.mjs' first"
+            exit 1
+          }
+
+      # Build the exe first — native-check.mjs requires dist/native/mdlight.exe
+      # and will exit with a clear message if it's missing.
+      - name: Build native exe
+        run: npm run build:native
+
+      - name: Run full test suite
+        run: npm test
+
+      - name: Upload artifact (single-file exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdlight-exe
+          path: dist/native/mdlight.exe
+          if-no-files-found: error
+          retention-days: 7
