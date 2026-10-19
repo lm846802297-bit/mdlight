@@ -44,8 +44,15 @@ jobs:
             exit 1
           }
 
-      # Build the exe first — native-check.mjs requires dist/native/mdlight.exe
-      # and will exit with a clear message if it's missing.
+      # dist/ is gitignored, so everything under it must be built fresh on CI.
+      #   - dist/mdlight.mjs  (Node bundle)  ← dist-standalone.mjs copies dist/
+      #   - dist/mermaid/     (on-demand chunks + kinds.json)  ← mermaid-check.mjs
+      #   - dist/native/mdlight.exe  ← native-check.mjs / parity-check.mjs / feat-check.mjs
+      - name: Build Node bundle + on-demand mermaid chunks
+        run: |
+          npm run build
+          npm run build:mermaid
+
       - name: Build native exe
         run: npm run build:native
 
