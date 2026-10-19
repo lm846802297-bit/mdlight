@@ -1,0 +1,29 @@
+# --- 依赖 ---
+node_modules/
+
+# --- 构建产物 ---
+dist/
+build/
+mdlight.exe
+
+# --- 测试输出 ---
+test/out/
+
+# --- 临时文件 ---
+*.mdlight-tmp-*
+*.log
+*.tmp
+
+# --- 本地配置 ---
+config.json
+*.local.json
+
+# --- 编辑器 / IDE ---
+.vscode/
+.idea/
+*.swp
+
+# --- 操作系统 ---
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,43 @@
+{
+  "name": "mdlight",
+  "version": "0.7.1",
+  "description": "轻量、离线、零遥测的 Markdown 阅读器：公式错误卡片、宏、内置源码编辑器、按需 mermaid 图表、单文件 exe（C# + WebView2 原生宿主）",
+  "license": "MIT",
+  "bin": {
+    "mdlight": "./mdlight.mjs"
+  },
+  "files": [
+    "mdlight.mjs",
+    "core",
+    "ui",
+    "native",
+    "dist",
+    "README.md",
+    "DESIGN.md"
+  ],
+  "scripts": {
+    "start": "node mdlight.mjs",
+    "build": "node tools/build.mjs",
+    "build:mermaid": "node tools/build-mermaid.mjs",
+    "build:native": "node tools/build-native.mjs",
+    "test": "node test/smoke.mjs && node test/macro-check.mjs && node test/mermaid-check.mjs && node test/dist-standalone.mjs && node test/parity-check.mjs && node test/native-check.mjs && node test/wysiwyg-check.mjs && node test/eqserial-check.mjs && node test/mdserial-fix-check.mjs && node test/config-check.mjs && node test/harden-check.mjs && node test/feat-check.mjs",
+    "test:browser": "node test/mermaid-browser.mjs",
+    "exe": "node tools/build-native.mjs && start dist/native/mdlight.exe"
+  },
+  "keywords": [
+    "markdown",
+    "viewer",
+    "katex",
+    "mermaid",
+    "offline",
+    "webview2",
+    "single-file-exe"
+  ],
+  "dependencies": {
+    "esbuild": "^0.24.2",
+    "highlight.js": "^11.12.0",
+    "katex": "^0.16.47",
+    "markdown-it": "^14.3.3",
+    "mermaid": "^12.2.0"
+  }
+}

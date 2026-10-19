@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>__TITLE_HTML__ — mdlight</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--MDL:ASSETS-->
+  <!-- live mode: CSS served by the local server (fonts already base64-inlined in katex.css) -->
+  <link rel="stylesheet" href="/assets/katex.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/custom.css">
+</head>
+<body data-live>
+  <header class="mdl-topbar">
+    <div class="mdl-topbar-file" id="mdl-file" title="__FILEPATH_HTML__">__FILENAME_HTML__</div>
+    <div class="mdl-topbar-actions">
+      <span class="mdl-stat" id="mdl-stat"></span>
+      <button class="mdl-btn" id="mdl-btn-toc" title="目录 (Ctrl+T)" data-i18n-title="toc">☰</button>
+      <button class="mdl-btn" id="mdl-btn-theme" title="主题 (Ctrl+D)" data-i18n-title="theme">◐</button>
+      <button class="mdl-btn" id="mdl-btn-print" title="打印 (Ctrl+P)" data-i18n-title="print">⎙</button>
+      <span class="mdl-topbar-sep"></span>
+      <button class="mdl-btn" id="mdl-btn-csv" title="导出表格为 CSV" data-i18n-title="export-csv">📊</button>
+      <button class="mdl-btn" id="mdl-btn-pdf" title="导出为 PDF" data-i18n-title="export-pdf">📄</button>
+      <button class="mdl-btn" id="mdl-btn-mindmap" title="大纲脑图 (Ctrl+Shift+M)" data-i18n-title="mindmap">🧠</button>
+      <span class="mdl-topbar-sep"></span>
+      <button class="mdl-btn" id="mdl-btn-edit" title="F2 打开外部编辑器" data-i18n-title="external-editor">✎</button>
+      <button class="mdl-btn" id="mdl-btn-settings" title="设置" data-i18n-title="settings">⚙</button>
+      <span class="mdl-topbar-sep"></span>
+      <button class="mdl-btn mdl-btn-size" id="mdl-btn-smaller" title="减小字号" data-i18n-title="font-smaller">A-</button>
+      <button class="mdl-btn mdl-btn-size" id="mdl-btn-larger" title="增大字号" data-i18n-title="font-larger">A+</button>
+      <button class="mdl-btn" id="mdl-btn-appear" title="外观 (皮肤 / 字体 / 字号)" data-i18n-title="appearance">🎨</button>
+      <span class="mdl-topbar-sep"></span>
+      <button class="mdl-btn" id="mdl-btn-wysiwyg" title="直接编辑 (Ctrl+Shift+E)" data-i18n-title="wysiwyg">✍</button>
+      <button class="mdl-btn" id="mdl-btn-lang" title="English">🌐</button>
+      <span class="mdl-topbar-sep"></span>
+      <span class="mdl-win-ctls" id="mdl-win-ctls" hidden>
+        <button class="mdl-btn mdl-win-btn" id="mdl-win-min" title="最小化" data-i18n-title="minimize">─</button>
+        <button class="mdl-btn mdl-win-btn" id="mdl-win-max" title="最大化" data-i18n-title="maximize">□</button>
+        <button class="mdl-btn mdl-win-btn mdl-win-close" id="mdl-win-close" title="关闭" data-i18n-title="close">✕</button>
+      </span>
+    </div>
+  </header>
+  <div class="mdl-pop" id="mdl-appear-pop" hidden>
+    <div class="mdl-pop-section">
+      <div class="mdl-pop-label" data-i18n="skin">皮肤模式</div>
+      <div class="mdl-skin-grid" id="mdl-skin-grid"></div>
+    </div>
+    <div class="mdl-pop-section">
+      <div class="mdl-pop-label" data-i18n="font-family">正文字体</div>
+      <select class="mdl-font-select" id="mdl-font-select"></select>
+    </div>
+    <div class="mdl-pop-section">
+      <div class="mdl-pop-label" data-i18n="font-size">正文字号</div>
+      <div class="mdl-size-row">
+        <button class="mdl-size-btn" id="mdl-size-minus" title="减小">A-</button>
+        <span class="mdl-size-val" id="mdl-size-val">15.5px</span>
+        <button class="mdl-size-btn" id="mdl-size-plus" title="增大">A+</button>
+      </div>
+    </div>
+  </div>
+  <div class="mdl-find" id="mdl-find" hidden>
+    <input class="mdl-find-input" id="mdl-find-input" type="text" placeholder="在页面中查找…" data-i18n-ph="find-placeholder" spellcheck="false">
+    <span class="mdl-find-count" id="mdl-find-count"></span>
+    <button class="mdl-btn" id="mdl-find-prev" title="上一个 (Shift+Enter)" data-i18n-title="find-prev">↑</button>
+    <button class="mdl-btn" id="mdl-find-next" title="下一个 (Enter)" data-i18n-title="find-next">↓</button>
+    <button class="mdl-btn" id="mdl-find-close" title="关闭 (Esc)" data-i18n-title="find-close">✕</button>
+  </div>
+  <div class="mdl-layout">
+    <nav class="mdl-toc" id="mdl-toc"><div class="mdl-toc-inner"></div></nav>
+    <main class="mdl-content" id="mdl-content">__BODY__</main>
+  </div>
+  <button class="mdl-totop" id="mdl-totop" title="返回顶部" data-i18n-title="to-top" aria-label="返回顶部">↑</button>
+  <div class="mdl-toast" id="mdl-toast" hidden></div>
+  <div class="mdl-ctx" id="mdl-ctx" hidden></div>
+  <div class="mdl-mindmap" id="mdl-mindmap" hidden>
+    <div class="mdl-mindmap-bar">
+      <span class="mdl-mindmap-title" id="mdl-mindmap-title"></span>
+      <button class="mdl-btn" id="mdl-mindmap-close" title="关闭 (Esc)" data-i18n-title="close">✕</button>
+    </div>
+    <div class="mdl-mindmap-body" id="mdl-mindmap-body"></div>
+  </div>
+  <script id="mdl-cfg">window.__MDL__ = {
+    toc: __TOC_JSON__,
+    filepath: __FILEPATH_JSON__,
+    eqCount: __EQ_COUNT__,
+    errCount: __ERR_COUNT__,
+    mermaidCount: __MERMAID_COUNT__,
+    version: '__VERSION__',
+    // true only in the native (C#) host, which has no Node-side renderer: the
+    // page fetches the markdown source and renders it in the browser with the
+    // very same renderer module. Node keeps server-side rendering.
+    clientRender: __CLIENT_RENDER__,
+  };</script>
+  <div class="mdl-wysiwyg-bar" id="mdl-wysiwyg-bar" hidden>
+    <button class="mdl-btn" data-cmd="undo" title="撤销 (Ctrl+Z)">↶</button>
+    <button class="mdl-btn" data-cmd="redo" title="重做 (Ctrl+Y)">↷</button>
+    <span class="mdl-wysiwyg-sep"></span>
+    <button class="mdl-btn" data-cmd="h2" title="标题">H2</button>
+    <button class="mdl-btn" data-cmd="h3" title="小标题">H3</button>
+    <button class="mdl-btn" data-cmd="p" title="正文">¶</button>
+    <span class="mdl-wysiwyg-sep"></span>
+    <button class="mdl-btn" data-cmd="bold" title="加粗 (Ctrl+B)"><b>B</b></button>
+    <button class="mdl-btn" data-cmd="italic" title="斜体 (Ctrl+I)"><i>I</i></button>
+    <button class="mdl-btn" data-cmd="strike" title="删除线"><s>S</s></button>
+    <button class="mdl-btn" data-cmd="code" title="代码块">⟨/⟩</button>
+    <span class="mdl-wysiwyg-sep"></span>
+    <button class="mdl-btn" data-cmd="ul" title="无序列表">•</button>
+    <button class="mdl-btn" data-cmd="ol" title="有序列表">1.</button>
+    <button class="mdl-btn" data-cmd="quote" title="引用">❯</button>
+    <button class="mdl-btn" data-cmd="link" title="链接">🔗</button>
+    <button class="mdl-btn" data-cmd="equation" title="公式">∫</button>
+    <button class="mdl-btn" id="mdl-btn-upload" title="上传图片到文档目录" data-i18n-title="upload-asset">🖼</button>
+    <input type="file" id="mdl-file-input" accept="image/*" multiple hidden>
+    <button class="mdl-btn" data-cmd="source" title="源码视图 (Ctrl+E)：精确改复杂表格/嵌套时切过去">源码</button>
+    <span class="mdl-wysiwyg-sep"></span>
+    <button class="mdl-btn mdl-btn--primary" data-cmd="save" title="保存 (Ctrl+S)">保存</button>
+    <button class="mdl-btn" data-cmd="cancel" title="取消">取消</button>
+  </div>
+  <div class="mdl-editor" id="mdl-editor" hidden>
+    <div class="mdl-editor-bar">
+      <span class="mdl-editor-title" data-i18n="editor-title">源码编辑</span>
+      <button class="mdl-btn" id="mdl-editor-close" data-i18n="editor-close">关闭</button>
+      <button class="mdl-btn mdl-btn--primary" id="mdl-editor-save" data-i18n="editor-save">保存 (Ctrl+S)</button>
+    </div>
+    <textarea id="mdl-source" spellcheck="false" wrap="soft"></textarea>
+    <div class="mdl-editor-hint">Ctrl+S 保存 · Esc 关闭 · 保存后预览自动刷新</div>
+  </div>
+  <!-- NB: app.js must come AFTER the editor markup above — it wires those
+       buttons by id at load time, so putting it earlier throws on a null node
+       and kills every other behavior on the page. -->
+  <!--MDL:RENDERER-->
+  <script src="/assets/i18n.js"></script>
+  <script src="/assets/mdserial.js"></script>
+  <script src="/assets/wysiwyg.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

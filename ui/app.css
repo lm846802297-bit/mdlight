@@ -1,0 +1,829 @@
+/* mdlight — theme styles (light/dark/sepia/auto, print, callouts, error cards) */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #656d76;
+  --border: #d8dee4;
+  --accent: #0969da;
+  --code-bg: #f6f8fa;
+  --toc-bg: #f6f8fa;
+  --callout-note-bg: #0969da14;
+  --callout-note-fg: #0969da;
+  --callout-tip-bg: #1a7f3714;
+  --callout-tip-fg: #1a7f37;
+  --callout-warning-bg: #9a670014;
+  --callout-warning-fg: #9a6700;
+  --callout-caution-bg: #cf222e14;
+  --callout-caution-fg: #cf222e;
+  --err-bg: #fff0f0;
+  --err-border: #ff8080;
+  --err-fg: #9f2222;
+  --shadow: 0 1px 3px rgba(0,0,0,.08);
+  /* user-configurable (mdlight 设置窗口 / %APPDATA%\mdlight\config.json).
+     --mdl-font / --mdl-font-size are overridden inline by app.js when a value
+     is set; code font stays monospace so indentation never shifts. */
+  --mdl-font: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --mdl-font-size: 15.5px;
+  --mdl-mono-font: Consolas, "Cascadia Code", monospace;
+}
+body[data-theme="dark"] {
+  --bg: #0d1117;
+  --fg: #e6edf3;
+  --muted: #8b949e;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --code-bg: #161b22;
+  --toc-bg: #0f141a;
+  --callout-note-bg: #58a6ff1f;
+  --callout-note-fg: #58a6ff;
+  --callout-tip-bg: #3fb9501f;
+  --callout-tip-fg: #3fb950;
+  --callout-warning-bg: #d2992260;
+  --callout-warning-fg: #d29922;
+  --callout-caution-bg: #f8514926;
+  --callout-caution-fg: #f85149;
+  --err-bg: #2d1117;
+  --err-border: #f85149;
+  --err-fg: #ff8182;
+  --shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+body[data-theme="sepia"] {
+  --bg: #f4ecd8;
+  --fg: #433422;
+  --muted: #7a6a53;
+  --border: #d8cdb4;
+  --accent: #8a5a00;
+  --code-bg: #ece1c6;
+  --toc-bg: #ece1c6;
+  --err-bg: #f3d8d8;
+  --err-fg: #7a2222;
+}
+@media (prefers-color-scheme: dark) {
+  body[data-theme="auto"] {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e; --border: #30363d;
+    --accent: #58a6ff; --code-bg: #161b22; --toc-bg: #0f141a;
+    --callout-note-bg: #58a6ff1f; --callout-note-fg: #58a6ff;
+    --callout-tip-bg: #3fb9501f; --callout-tip-fg: #3fb950;
+    --callout-warning-bg: #d2992260; --callout-warning-fg: #d29922;
+    --callout-caution-bg: #f8514926; --callout-caution-fg: #f85149;
+    --err-bg: #2d1117; --err-border: #f85149; --err-fg: #ff8182;
+  }
+}
+
+/* ---- extra skins (parity feature: theme / 皮肤选择) ------------------------- */
+body[data-theme="nord"] {
+  --bg: #2e3440; --fg: #d8dee9; --muted: #616e88; --border: #4c566a;
+  --accent: #88c0d0; --code-bg: #3b4252; --toc-bg: #3b4252;
+  --callout-note-bg: #88c0d01f; --callout-note-fg: #88c0d0;
+  --callout-tip-bg: #a3be8c1f; --callout-tip-fg: #a3be8c;
+  --callout-warning-bg: #ebcb8b2e; --callout-warning-fg: #ebcb8b;
+  --callout-caution-bg: #bf616a26; --callout-caution-fg: #bf616a;
+  --err-bg: #3b2233; --err-border: #bf616a; --err-fg: #e8a0a6;
+  --shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+body[data-theme="solarized"] {
+  --bg: #fdf6e3; --fg: #586e75; --muted: #93a1a1; --border: #e6e0ce;
+  --accent: #268bd2; --code-bg: #eee8d5; --toc-bg: #eee8d5;
+  --callout-note-bg: #268bd21f; --callout-note-fg: #268bd2;
+  --callout-tip-bg: #8599001f; --callout-tip-fg: #859900;
+  --callout-warning-bg: #b5890026; --callout-warning-fg: #b58900;
+  --callout-caution-bg: #dc322f1f; --callout-caution-fg: #dc322f;
+  --err-bg: #fbe0dd; --err-border: #dc322f; --err-fg: #b02e2b;
+}
+body[data-theme="dracula"] {
+  --bg: #282a36; --fg: #f8f8f2; --muted: #6272a4; --border: #44475a;
+  --accent: #bd93f9; --code-bg: #21222c; --toc-bg: #21222c;
+  --callout-note-bg: #bd93f921; --callout-note-fg: #bd93f9;
+  --callout-tip-bg: #50fa7b1f; --callout-tip-fg: #50fa7b;
+  --callout-warning-bg: #f1fa8c26; --callout-warning-fg: #f1fa8c;
+  --callout-caution-bg: #ff55551f; --callout-caution-fg: #ff5555;
+  --err-bg: #3a2233; --err-border: #ff5555; --err-fg: #ff7a7a;
+  --shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+body[data-theme="matrix"] {
+  --bg: #0a0f0a; --fg: #c8f7c5; --muted: #3f7f3a; --border: #1f4a1f;
+  --accent: #00ff41; --code-bg: #111a11; --toc-bg: #0d140d;
+  --callout-note-bg: #00ff411a; --callout-note-fg: #00ff41;
+  --callout-tip-bg: #7cff7a1a; --callout-tip-fg: #7cff7a;
+  --callout-warning-bg: #c8f70026; --callout-warning-fg: #c8f700;
+  --callout-caution-bg: #ff00441f; --callout-caution-fg: #ff3366;
+  --err-bg: #1a0a0f; --err-border: #ff3366; --err-fg: #ff7a99;
+  --shadow: 0 1px 3px rgba(0,255,65,.15);
+}
+
+body[data-theme="gruvbox"] {
+  --bg: #282828; --fg: #ebdbb2; --muted: #7c6f64; --border: #3c3836;
+  --accent: #fb4934; --code-bg: #1d2021; --toc-bg: #2e2b28;
+  --callout-note-bg: #83a5981f; --callout-note-fg: #83a598;
+  --callout-tip-bg: #b8bb261f; --callout-tip-fg: #b8bb26;
+  --callout-warning-bg: #fabd2f1f; --callout-warning-fg: #fabd2f;
+  --callout-caution-bg: #fb49341f; --callout-caution-fg: #fb4934;
+  --err-bg: #2a1414; --err-border: #fb4934; --err-fg: #fb7a6b;
+  --shadow: 0 1px 3px rgba(251,73,52,.15);
+}
+
+body[data-theme="ocean"] {
+  --bg: #0b1a2b; --fg: #c9d6e3; --muted: #5b7488; --border: #1c3a55;
+  --accent: #4aa3df; --code-bg: #0e2033; --toc-bg: #0d1f33;
+  --callout-note-bg: #4aa3df1f; --callout-note-fg: #4aa3df;
+  --callout-tip-bg: #58d68d1f; --callout-tip-fg: #58d68d;
+  --callout-warning-bg: #f4c5421f; --callout-warning-fg: #f4c542;
+  --callout-caution-bg: #ff5e7a1f; --callout-caution-fg: #ff7a99;
+  --err-bg: #1a0f1a; --err-border: #ff5e7a; --err-fg: #ff8a9b;
+  --shadow: 0 1px 3px rgba(74,163,223,.15);
+}
+
+body[data-theme="forest"] {
+  --bg: #0f1a12; --fg: #d4e6d0; --muted: #5e7a5c; --border: #1e3620;
+  --accent: #4caf50; --code-bg: #14211a; --toc-bg: #122019;
+  --callout-note-bg: #4caf501f; --callout-note-fg: #66bb6a;
+  --callout-tip-bg: #9ccc651f; --callout-tip-fg: #9ccc65;
+  --callout-warning-bg: #ffb74d1f; --callout-warning-fg: #ffb74d;
+  --callout-caution-bg: #ef53501f; --callout-caution-fg: #ef5350;
+  --err-bg: #1a120e; --err-border: #ef5350; --err-fg: #ef7a70;
+  --shadow: 0 1px 3px rgba(76,175,80,.15);
+}
+
+body[data-theme="rosepine"] {
+  --bg: #191724; --fg: #e0def4; --muted: #6e6a86; --border: #2a2837;
+  --accent: #ebbcba; --code-bg: #1f1d2e; --toc-bg: #1e1c2b;
+  --callout-note-bg: #9ccfd81f; --callout-note-fg: #9ccfd8;
+  --callout-tip-bg: #f6c1771f; --callout-tip-fg: #f6c177;
+  --callout-warning-bg: #ebbcba1f; --callout-warning-fg: #ebbcba;
+  --callout-caution-bg: #eb6f921f; --callout-caution-fg: #eb6f92;
+  --err-bg: #2a1e2a; --err-border: #eb6f92; --err-fg: #f4a1b8;
+  --shadow: 0 1px 3px rgba(235,188,186,.15);
+}
+
+body[data-theme="catppuccin"] {
+  --bg: #1e1e2e; --fg: #cdd6f4; --muted: #7f849c; --border: #313244;
+  --accent: #cba6f7; --code-bg: #181825; --toc-bg: #1c1c2c;
+  --callout-note-bg: #89dceb1f; --callout-note-fg: #89dceb;
+  --callout-tip-bg: #a6e3a11f; --callout-tip-fg: #a6e3a1;
+  --callout-warning-bg: #f9e2af1f; --callout-warning-fg: #f9e2af;
+  --callout-caution-bg: #f38ba81f; --callout-caution-fg: #f38ba8;
+  --err-bg: #2e2230; --err-border: #f38ba8; --err-fg: #f5a8c0;
+  --shadow: 0 1px 3px rgba(203,166,247,.15);
+}
+
+body[data-theme="cyberpunk"] {
+  --bg: #0e0b1a; --fg: #e0e0ff; --muted: #6f6aa8; --border: #2a2145;
+  --accent: #ff2a6d; --code-bg: #14102a; --toc-bg: #121029;
+  --callout-note-bg: #00f0ff1f; --callout-note-fg: #00f0ff;
+  --callout-tip-bg: #05ffa11f; --callout-tip-fg: #05ffa1;
+  --callout-warning-bg: #fcee0a1f; --callout-warning-fg: #fcee0a;
+  --callout-caution-bg: #ff2a6d1f; --callout-caution-fg: #ff2a6d;
+  --err-bg: #2a0a1a; --err-border: #ff2a6d; --err-fg: #ff6a99;
+  --shadow: 0 1px 3px rgba(255,42,109,.2);
+}
+
+body[data-theme="tokyonight"] {
+  --bg: #1a1b26; --fg: #c0caf5; --muted: #565f89; --border: #2f334d;
+  --accent: #7aa2f7; --code-bg: #16161e; --toc-bg: #171823;
+  --callout-note-bg: #7dcfff1f; --callout-note-fg: #7dcfff;
+  --callout-tip-bg: #9ece6a1f; --callout-tip-fg: #9ece6a;
+  --callout-warning-bg: #e0af681f; --callout-warning-fg: #e0af68;
+  --callout-caution-bg: #f7768e1f; --callout-caution-fg: #f7768e;
+  --err-bg: #2a1e2e; --err-border: #f7768e; --err-fg: #f890a8;
+  --shadow: 0 1px 3px rgba(122,162,247,.15);
+}
+
+body[data-theme="monokai"] {
+  --bg: #272822; --fg: #f8f8f2; --muted: #75715e; --border: #3e3d32;
+  --accent: #a6e22e; --code-bg: #1e1f1c; --toc-bg: #23241f;
+  --callout-note-bg: #66d9ef1f; --callout-note-fg: #66d9ef;
+  --callout-tip-bg: #a6e22e1f; --callout-tip-fg: #a6e22e;
+  --callout-warning-bg: #fd971f1f; --callout-warning-fg: #fd971f;
+  --callout-caution-bg: #f926721f; --callout-caution-fg: #f92672;
+  --err-bg: #2a1e22; --err-border: #f92672; --err-fg: #f75a8e;
+  --shadow: 0 1px 3px rgba(166,226,46,.15);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--mdl-font);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* ---- top bar ---- */
+.mdl-topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 44px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+.mdl-topbar-file {
+  font-size: 13px; color: var(--muted);
+  max-width: 45vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mdl-topbar-actions { display: flex; gap: 6px; align-items: center; }
+.mdl-btn {
+  border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+  width: 30px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 14px;
+}
+.mdl-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* text button: the 30px icon box would wrap 源码 onto two lines */
+.mdl-btn--text { width: auto; padding: 0 10px; white-space: nowrap; font-size: 12.5px; }
+.mdl-stat { font-size: 12px; color: var(--muted); margin-right: 8px; }
+.mdl-stat--err { color: var(--callout-caution-fg); font-weight: 600; }
+
+/* ---- appearance popover (皮肤 / 字体 / 字号) ------------------------------ */
+.mdl-btn-size { width: auto; min-width: 26px; font-size: 12px; font-weight: 700; }
+.mdl-pop {
+  position: absolute; top: 38px; right: 10px; z-index: 60;
+  width: 268px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow), 0 8px 30px rgba(0,0,0,.18);
+  padding: 12px; font-family: var(--mdl-font);
+}
+.mdl-pop-section { margin-bottom: 12px; }
+.mdl-pop-section:last-child { margin-bottom: 0; }
+.mdl-pop-label {
+  font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .04em; margin-bottom: 6px;
+}
+.mdl-skin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mdl-skin {
+  display: flex; align-items: center; gap: 7px; padding: 6px 7px;
+  border: 1px solid var(--border); border-radius: 7px; cursor: pointer;
+  background: var(--bg); color: var(--fg); font-size: 12px; text-align: left;
+}
+.mdl-skin:hover { border-color: var(--accent); }
+.mdl-skin--on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.mdl-skin-sw { display: flex; width: 22px; height: 16px; border-radius: 3px;
+  overflow: hidden; border: 1px solid var(--border); flex-shrink: 0; }
+.mdl-skin-sw i { display: block; flex: 1; }
+.mdl-font-select, .mdl-size-val {
+  width: 100%; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--bg); color: var(--fg); font-size: 13px;
+}
+.mdl-size-row { display: flex; align-items: center; gap: 8px; }
+.mdl-size-row .mdl-size-val { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
+.mdl-size-btn { width: 34px; height: 30px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--fg); border-radius: 7px; cursor: pointer;
+  font-weight: 700; font-size: 13px; }
+.mdl-size-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---- right-click context menu ---- */
+.mdl-ctx {
+  position: fixed; z-index: 100; min-width: 220px; max-width: 320px;
+  padding: 6px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow), 0 10px 34px rgba(0,0,0,.22);
+  font-family: var(--mdl-font);
+}
+.mdl-ctx[hidden] { display: none !important; }
+.mdl-ctx-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 7px 10px; border: 0; background: none; border-radius: 7px;
+  color: var(--fg); font-size: 13px; text-align: left; cursor: pointer;
+  white-space: nowrap;
+}
+.mdl-ctx-item:hover, .mdl-ctx-item:focus-visible { background: var(--accent); color: #fff; }
+.mdl-ctx-item:focus-visible { outline: none; }
+.mdl-ctx-item[disabled] { opacity: .4; pointer-events: none; }
+.mdl-ctx-item .mdl-ctx-ico { width: 18px; text-align: center; flex-shrink: 0; opacity: .85; }
+.mdl-ctx-item .mdl-ctx-key { margin-left: auto; font-size: 11px; opacity: .5; font-variant-numeric: tabular-nums; }
+.mdl-ctx-item:hover .mdl-ctx-key { opacity: .8; }
+.mdl-ctx-sep { height: 1px; margin: 5px 6px; background: var(--border); }
+.mdl-ctx-head {
+  font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .04em; padding: 6px 10px 3px;
+}
+.mdl-ctx-arrow { margin-left: auto; font-size: 10px; opacity: .55; }
+.mdl-ctx-sub { padding: 6px 10px 8px; border-top: 1px solid var(--border); margin-top: 2px; }
+.mdl-ctx-sub[hidden] { display: none !important; }
+.mdl-ctx-sub .mdl-skin-grid { grid-template-columns: 1fr 1fr; }
+.mdl-ctx-sub .mdl-size-val { font-size: 12px; padding: 5px 8px; }
+
+/* ---- layout ---- */
+.mdl-layout { display: flex; padding-top: 44px; min-height: 100vh; }
+.mdl-toc {
+  width: 260px; flex-shrink: 0;
+  background: var(--toc-bg);
+  border-right: 1px solid var(--border);
+  position: sticky; top: 44px;
+  height: calc(100vh - 44px);
+  overflow-y: auto;
+  transition: margin-left .18s ease;
+}
+.mdl-toc.is-hidden { margin-left: -260px; }
+.mdl-toc-inner { padding: 14px 10px; }
+.mdl-toc-item {
+  display: block; padding: 4px 8px; border-radius: 6px;
+  color: var(--muted); text-decoration: none; font-size: 13px;
+  border-left: 2px solid transparent;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mdl-toc-l1 { font-weight: 600; color: var(--fg); }
+.mdl-toc-l2 { padding-left: 20px; }
+.mdl-toc-l3 { padding-left: 32px; }
+.mdl-toc-l4, .mdl-toc-l5, .mdl-toc-l6 { padding-left: 44px; }
+.mdl-toc-item:hover { background: var(--code-bg); color: var(--accent); }
+.mdl-toc-item.is-active {
+  border-left-color: var(--accent); color: var(--accent); background: var(--code-bg);
+}
+.mdl-toc-empty { color: var(--muted); font-size: 12px; padding: 10px; }
+
+.mdl-content {
+  flex: 1; min-width: 0;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 28px 40px 80px;
+}
+
+/* ---- typography ---- */
+.mdl-content h1, .mdl-content h2, .mdl-content h3,
+.mdl-content h4, .mdl-content h5, .mdl-content h6 {
+  font-weight: 600; line-height: 1.3; margin: 1.4em 0 .6em;
+}
+.mdl-content h1 { font-size: 1.9em; border-bottom: 1px solid var(--border); padding-bottom: .3em; }
+.mdl-content h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: .25em; }
+.mdl-content h3 { font-size: 1.25em; }
+.mdl-content p, .mdl-content li { line-height: 1.75; font-size: var(--mdl-font-size); }
+.mdl-content a { color: var(--accent); text-decoration: none; }
+.mdl-content a:hover { text-decoration: underline; }
+/* in-body heading fold (parity feature): caret + pointer on h1-h3, click collapses */
+.mdl-content h1, .mdl-content h2, .mdl-content h3 { cursor: pointer; }
+.mdl-content h1.mdl-folded, .mdl-content h2.mdl-folded, .mdl-content h3.mdl-folded {
+  cursor: pointer;
+}
+.mdl-content h1::before, .mdl-content h2::before, .mdl-content h3::before {
+  content: '▾ ';
+  opacity: .45;
+  font-size: .75em;
+  margin-left: -.9em;
+}
+.mdl-content h1.mdl-folded::before,
+.mdl-content h2.mdl-folded::before,
+.mdl-content h3.mdl-folded::before { content: '▸ '; }
+.mdl-content code {
+  background: var(--code-bg); border-radius: 4px;
+  padding: .15em .35em; font-size: .9em;
+  font-family: var(--mdl-mono-font);
+}
+.mdl-content blockquote {
+  margin: 1em 0; padding: .5em 1em;
+  border-left: 4px solid var(--border); color: var(--muted);
+  background: var(--code-bg);
+}
+.mdl-content img { max-width: 100%; }
+.mdl-content hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+
+/* code blocks */
+.mdl-content pre.mdl-code {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; overflow-x: auto;
+  box-shadow: var(--shadow);
+}
+.mdl-content pre code {
+  background: none; padding: 0; font-size: 13.5px; line-height: 1.5;
+  font-family: var(--mdl-mono-font);
+}
+/* code_wrap (config): soft-wrap long lines instead of the horizontal scrollbar */
+body.mdl-code-wrap .mdl-content pre.mdl-code { white-space: pre-wrap; word-break: break-word; }
+/* code_lineno (config): each .line span gets a gutter number via CSS counters */
+body.mdl-code-lineno .mdl-content pre code { counter-reset: line; }
+body.mdl-code-lineno .mdl-content pre code .line {
+  display: block; position: relative; padding-left: 3.2em; min-height: 1.5em;
+}
+body.mdl-code-lineno .mdl-content pre code .line::before {
+  counter-increment: line; content: counter(line);
+  position: absolute; left: 0; width: 2.4em; text-align: right;
+  color: color-mix(in srgb, var(--fg) 35%, transparent); font-size: .9em;
+}
+
+/* Progressive-render placeholder: the raw markdown is shown for one frame
+   before the full markdown-it + KaTeX + highlight.js pipeline replaces it,
+   so a very large document never looks like a blank page. */
+.mdl-content pre.mdl-source-preview {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 18px; margin: 0; overflow: auto;
+  white-space: pre-wrap; word-break: break-word; tab-size: 2;
+  font-size: 13px; line-height: 1.55; color: var(--fg);
+  font-family: Consolas, "Cascadia Code", "Microsoft YaHei", monospace;
+  max-height: none;
+}
+
+/* tables */
+.mdl-content table { border-collapse: collapse; margin: 1em 0; display: block; overflow-x: auto; }
+.mdl-content th, .mdl-content td { border: 1px solid var(--border); padding: 6px 12px; font-size: 14px; }
+.mdl-content th { background: var(--code-bg); font-weight: 600; }
+.mdl-content tr:nth-child(2n) td { background: color-mix(in srgb, var(--code-bg) 50%, var(--bg)); }
+/* table full-screen toggle (⛶ button injected per table) */
+.mdl-content table { position: relative; }
+.mdl-content table .mdl-tbl-fs {
+  position: absolute; top: 4px; right: 4px; z-index: 3;
+  border: 1px solid var(--border); background: var(--code-bg); color: var(--fg);
+  border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;
+  opacity: 0; transition: opacity .15s;
+}
+.mdl-content table:hover .mdl-tbl-fs { opacity: 1; }
+.mdl-content table.mdl-tbl-fs-on {
+  position: fixed; inset: 0; z-index: 9999; margin: 0;
+  background: var(--bg); padding: 16px; overflow: auto;
+}
+.mdl-content table.mdl-tbl-fs-on .mdl-tbl-fs { opacity: 1; top: 8px; right: 8px; }
+
+/* task lists */
+.mdl-content li.mdl-task { list-style: none; margin-left: -20px; }
+.mdl-content li.mdl-task--done { color: var(--muted); text-decoration: line-through; }
+.mdl-task-box { margin-right: 6px; accent-color: var(--accent); }
+
+/* wikilinks */
+.mdl-wikilink {
+  border-bottom: 1px dashed var(--accent);
+  cursor: copy;
+}
+.mdl-wikilink:hover::after {
+  content: " ⧉"; font-size: .8em; opacity: .7;
+}
+
+/* ---- math ---- */
+.mdl-eq--display { display: block; margin: 1em 0; overflow-x: auto; overflow-y: hidden; }
+.mdl-eq--display .katex-display { margin: 0; }
+.katex { font-size: 1.06em; }
+/* hover copy button on rendered equations: copies the LaTeX source */
+x-equation { position: relative; display: inline-block; vertical-align: baseline; }
+x-equation .mdl-eq-copy {
+  position: absolute; top: 0; right: 0;
+  padding: 0 6px; margin: 0;
+  font-size: 13px; line-height: 1.7;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer;
+  opacity: 0; transition: opacity .12s ease;
+  z-index: 2;
+}
+x-equation:hover .mdl-eq-copy { opacity: 1; }
+x-equation .mdl-eq-copy:hover { color: var(--accent); border-color: var(--accent); }
+x-equation.mdl-eq--display .mdl-eq-copy { top: 4px; right: 6px; }
+
+/* error card — the #2 fix: informative, not silent red text */
+.mdl-math-error {
+  border: 1px solid var(--err-border);
+  border-left: 4px solid var(--err-border);
+  background: var(--err-bg);
+  color: var(--err-fg);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+.mdl-math-error-head {
+  font-size: 13px; font-weight: 600; margin-bottom: 6px;
+}
+.mdl-math-error-msg { font-weight: 400; opacity: .9; }
+.mdl-math-error-src {
+  margin: 0; padding: 8px; background: var(--bg);
+  border-radius: 6px; cursor: copy;
+  font-family: Consolas, monospace; font-size: 13px;
+  white-space: pre-wrap; word-break: break-all;
+}
+.mdl-math-error-src:hover { outline: 1px dashed var(--err-border); }
+.mdl-math-error-src::after { content: " (点击复制源码)"; font-size: 11px; opacity: .6; }
+
+/* callouts */
+.mdl-callout {
+  border-radius: 8px; padding: 4px 16px; margin: 1em 0;
+  border-left: 4px solid var(--callout-note-fg, var(--accent));
+  background: var(--callout-note-bg, var(--code-bg));
+  color: var(--fg);
+}
+.mdl-callout--note, .mdl-callout--info { --c: var(--callout-note-fg); --cb: var(--callout-note-bg); }
+.mdl-callout--tip, .mdl-callout--success { --c: var(--callout-tip-fg); --cb: var(--callout-tip-bg); }
+.mdl-callout--warning { --c: var(--callout-warning-fg); --cb: var(--callout-warning-bg); }
+.mdl-callout--caution, .mdl-callout--important { --c: var(--callout-caution-fg); --cb: var(--callout-caution-bg); }
+.mdl-callout--note, .mdl-callout--info, .mdl-callout--tip, .mdl-callout--success,
+.mdl-callout--warning, .mdl-callout--caution, .mdl-callout--important,
+.mdl-callout--question, .mdl-callout--example {
+  border-left-color: var(--c);
+  background: var(--cb);
+}
+.mdl-callout > p:first-of-type::before {
+  content: attr(data-callout-title, "");
+  display: block;
+  font-weight: 700; color: var(--c);
+  font-size: 13px; letter-spacing: .05em;
+  text-transform: uppercase;
+  margin: 6px 0 2px;
+}
+
+/* ---- toast ---- */
+.mdl-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--fg); color: var(--bg);
+  padding: 8px 18px; border-radius: 20px; font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  z-index: 100; transition: opacity .2s;
+}
+.mdl-toast[hidden] { display: none; }
+
+/* ---- print ---- */
+@media print {
+  .mdl-topbar, .mdl-toc, .mdl-toast { display: none !important; }
+  .mdl-layout { padding-top: 0; }
+  .mdl-content { max-width: none; padding: 0; }
+  .mdl-math-error { break-inside: avoid; }
+  pre, .mdl-callout { break-inside: avoid; }
+  a { color: inherit; }
+}
+
+/* ---- internal source editor panel (v0.3.0) ---- */
+.mdl-editor {
+  position: fixed; inset: auto 0 0 0; z-index: 30;
+  display: flex; flex-direction: column;
+  background: var(--bg); border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 12px rgba(0,0,0,.12);
+  transform: translateY(100%); transition: transform .22s ease;
+  height: 42vh; max-height: 420px;
+}
+.mdl-editor[hidden] { display: none !important; }
+.mdl-editor.open { transform: translateY(0); }
+.mdl-editor-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--toc-bg);
+}
+.mdl-editor-title {
+  font-size: 13px; font-weight: 600; color: var(--fg);
+}
+#mdl-source {
+  flex: 1; font-family: Consolas, "Cascadia Code", "Microsoft YaHei Mono", monospace;
+  font-size: 13.5px; line-height: 1.55; resize: none; border: none; outline: none;
+  padding: 12px 14px; color: var(--fg); background: var(--bg);
+  overflow: auto; box-sizing: border-box;
+}
+#mdl-source::placeholder { color: var(--muted); }
+.mdl-editor-hint {
+  font-size: 11.5px; color: var(--muted); padding: 6px 14px;
+  border-top: 1px solid var(--border); user-select: none;
+}
+.mdl-btn--primary {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.mdl-btn--primary:hover { opacity: .9; border-color: var(--accent); }
+
+/* ---- in-page find bar (Ctrl+F, parity feature) ------------------------------ */
+.mdl-find {
+  position: sticky; top: 44px; z-index: 25;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px; background: var(--toc-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.mdl-find[hidden] { display: none !important; }
+.mdl-find-input {
+  flex: 1; max-width: 320px; padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--fg); font-size: 13px; outline: none;
+}
+.mdl-find-input:focus { border-color: var(--accent); }
+.mdl-find-count { color: var(--muted); font-size: 12px; min-width: 3.5em; }
+.mdl-find-hit { background: rgba(255, 200, 0, .45); color: inherit; border-radius: 2px; }
+.mdl-find-hit--active { background: var(--accent); color: #fff; }
+
+/* ---- outline mind-map overlay (parity feature: markmap) --------------------- */
+.mdl-mindmap {
+  position: fixed; inset: 0; z-index: 60;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+}
+.mdl-mindmap[hidden] { display: none !important; }
+.mdl-mindmap-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+.mdl-mindmap-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mdl-mindmap-body {
+  flex: 1; overflow: hidden; cursor: grab;
+  display: flex; align-items: flex-start; padding: 20px;
+}
+.mdl-mindmap-body:active { cursor: grabbing; }
+.mdl-mindmap-body svg { transition: transform .08s linear; }
+
+/* ---- frameless title bar (DWM, parity feature) ------------------------------ */
+/* The native host draws no OS title bar; the topbar becomes the window drag
+   region and carries the window controls. Everything interactive inside it
+   opts out of dragging with -webkit-app-region: no-drag. */
+body.mdl-frameless .mdl-topbar { -webkit-app-region: drag; }
+body.mdl-frameless .mdl-topbar .mdl-btn,
+body.mdl-frameless .mdl-topbar .mdl-stat { -webkit-app-region: no-drag; }
+.mdl-win-ctls { display: inline-flex; gap: 2px; margin-left: 6px; }
+.mdl-win-ctls[hidden] { display: none !important; }
+.mdl-win-btn { width: 34px; padding: 0; justify-content: center; }
+.mdl-win-close:hover { background: #e81123; color: #fff; border-color: #e81123; }
+
+/* ---- F3 dual view (source | preview) -------------------------------------- */
+/* The editor panel becomes a left-hand source pane and the content area
+   shrinks to the right half, re-rendering live as you type. */
+body.mdl-dual .mdl-editor {
+  position: fixed; inset: 44px auto 0 0; width: 50%;
+  height: auto; max-height: none; z-index: 20;
+  transform: translateY(0); border-top: none;
+  border-right: 1px solid var(--border); box-shadow: none;
+  transition: none;
+}
+body.mdl-dual .mdl-editor.dual { transform: translateY(0); }
+body.mdl-dual .mdl-editor.open { transform: translateY(0); }
+body.mdl-dual .mdl-toc { display: none; }
+body.mdl-dual .mdl-content { margin-left: 50%; }
+
+/* ---- mermaid diagrams (on-demand, client-rendered) ------------------------- */
+/* Before the chunk loads, the block shows the escaped source. Once mermaid has
+   drawn the SVG, the source is replaced; on failure the source returns with the
+   error message (never a blank box). */
+x-mermaid {
+  display: block; margin: 18px 0; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--code-bg, rgba(127,127,127,.06));
+  overflow-x: auto;
+}
+x-mermaid[data-mm-state="ok"] { background: var(--bg); text-align: center; }
+x-mermaid[data-mm-state="ok"] .mdl-mermaid-src { display: none; }
+x-mermaid[data-mm-state="ok"] svg { max-width: 100%; height: auto; }
+.mdl-mermaid-src {
+  margin: 0; font-family: Consolas, "Cascadia Code", "Microsoft YaHei Mono", monospace;
+  font-size: 12.5px; line-height: 1.5; color: var(--muted);
+  white-space: pre-wrap; word-break: break-word;
+}
+x-mermaid[data-mm-state="error"] {
+  border-color: var(--err-border, #e06c75);
+  background: var(--err-bg, rgba(224,108,117,.08));
+}
+.mdl-mermaid-error-hd {
+  font-size: 12.5px; font-weight: 600; color: var(--err-fg, #c0392b); margin-bottom: 6px;
+}
+.mdl-mermaid-error-msg {
+  font-size: 12.5px; color: var(--err-fg, #c0392b); margin-bottom: 8px;
+  font-family: Consolas, monospace; word-break: break-word;
+}
+x-mermaid[data-mm-state="static"] { opacity: .95; }
+.mdl-mermaid-hint {
+  margin-top: 8px; font-size: 11.5px; color: var(--muted); text-align: left;
+}
+
+/* only the native host ever sees this: it has no server-side renderer, so the
+   page paints a placeholder until the client renderer replaces it */
+.mdl-loading { color: var(--muted); font-size: 14px; padding: 28px 0; }
+
+/* ---- direct editing (WYSIWYG) ------------------------------------------- */
+.mdl-wysiwyg-bar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+  padding: 6px 10px; background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.mdl-wysiwyg-bar .mdl-btn { padding: 4px 9px; font-size: 13px; min-width: 0; }
+.mdl-wysiwyg-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+.mdl-editing { outline: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 4px; }
+.mdl-editing p, .mdl-editing li, .mdl-editing h1, .mdl-editing h2,
+.mdl-editing h3, .mdl-editing h4, .mdl-editing h5, .mdl-editing h6 {
+  border-radius: 3px;
+}
+.mdl-editing p:focus, .mdl-editing li:focus, .mdl-editing h1:focus,
+.mdl-editing h2:focus, .mdl-editing h3:focus, .mdl-editing h4:focus,
+.mdl-editing h5:focus, .mdl-editing h6:focus, .mdl-editing td:focus {
+  outline: 2px solid var(--accent); outline-offset: -2px; background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+.mdl-editing pre code { display: block; white-space: pre-wrap; }
+.mdl-editing x-equation { border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); padding: 2px 6px; border-radius: 4px; }
+.mdl-editing x-mermaid { border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); padding: 6px; border-radius: 4px; }
+.mdl-editing .mdl-task-box { pointer-events: auto; cursor: pointer; }
+
+/* ==========================================================================
+   UI polish (v0.7.2) — affordance, focus, motion, scrollbars
+   Everything here is cosmetic and theme-driven (uses the CSS variables
+   already defined above, so the 16 skins pick it up automatically).
+   ========================================================================== */
+
+/* --- global selection + focus -------------------------------------------- */
+::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--fg); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mdl-btn:focus-visible, .mdl-skin:focus-visible, .mdl-ctx-item:focus-visible,
+.mdl-size-btn:focus-visible, .mdl-font-select:focus-visible { outline-offset: 1px; }
+
+html { scroll-behavior: smooth; }
+
+/* --- topbar: consistent button affordance + logical groups ---------------- */
+.mdl-topbar-actions { gap: 2px; }
+.mdl-btn {
+  transition: background-color .12s ease, border-color .12s ease,
+              color .12s ease, transform .06s ease;
+}
+.mdl-btn:hover { transform: translateY(-1px); }
+.mdl-btn:active { transform: translateY(0); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+/* group separators: a thin vertical rule between logical clusters */
+.mdl-topbar-sep { width: 1px; height: 18px; background: var(--border); margin: 0 5px; flex-shrink: 0; }
+/* the size stepper (A- / A+) reads as one control */
+#mdl-btn-smaller, #mdl-btn-larger { border-radius: 0; border-right: 0; margin: 0; padding: 0 6px; }
+#mdl-btn-smaller { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+#mdl-btn-larger { border-top-right-radius: 6px; border-bottom-right-radius: 6px; border-right: 1px solid var(--border); }
+/* the language button: a small active-language marker underneath */
+#mdl-btn-lang { position: relative; overflow: visible; }
+#mdl-btn-lang::after {
+  content: ''; position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%;
+  background: color-mix(in srgb, var(--fg) 55%, transparent);
+}
+/* highlight the currently-applied theme button while the popover is open */
+.mdl-btn.is-active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+
+/* --- TOC: clearer hierarchy, smoother active state, custom scrollbar ------ */
+.mdl-toc-inner { position: relative; }
+.mdl-toc-item { transition: background-color .12s ease, color .12s ease, border-color .12s ease; position: relative; }
+.mdl-toc-item.is-active { font-weight: 600; }
+/* indent guide: a faint vertical rule so nesting reads at a glance */
+.mdl-toc-inner::before {
+  content: ''; position: absolute; left: 21px; top: 8px; bottom: 8px;
+  width: 1px; background: color-mix(in srgb, var(--border) 60%, transparent);
+}
+.mdl-toc-item { padding-left: 12px; }
+.mdl-toc-l2 { padding-left: 32px; }
+.mdl-toc-l3 { padding-left: 44px; }
+.mdl-toc-l4, .mdl-toc-l5, .mdl-toc-l6 { padding-left: 56px; }
+
+/* --- custom scrollbars (webkit + firefox) --------------------------------- */
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted) 45%, transparent); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--muted) 70%, transparent); background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* --- headings: a subtle marker for the fold caret, consistent rhythm ------- */
+.mdl-content h1, .mdl-content h2, .mdl-content h3 { scroll-margin-top: 56px; }
+.mdl-content h1::before, .mdl-content h2::before, .mdl-content h3::before {
+  font-size: .68em; opacity: .4; transition: opacity .12s ease;
+}
+.mdl-content h1:hover::before, .mdl-content h2:hover::before, .mdl-content h3:hover::before { opacity: .75; }
+
+/* --- links: a subtle underline affordance --------------------------------- */
+.mdl-content a { border-radius: 2px; }
+.mdl-content a:hover { text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+/* --- code blocks: softer edge, better focus for copyable content ---------- */
+.mdl-content pre.mdl-code { box-shadow: none; }
+.mdl-content pre.mdl-code { position: relative; }
+.mdl-content pre.mdl-code::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-top-left-radius: 8px; border-bottom-left-radius: 8px;
+}
+
+/* --- tables: hover row highlight (subtle) --------------------------------- */
+.mdl-content tbody tr { transition: background-color .1s ease; }
+.mdl-content tbody tr:hover td { background: color-mix(in srgb, var(--accent) 7%, var(--bg)); }
+
+/* --- toast: slide up, auto-width pill, safer stacking --------------------- */
+.mdl-toast {
+  transform: translateX(-50%) translateY(8px); opacity: 0;
+  pointer-events: none;
+  max-width: 80vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mdl-toast:not([hidden]) { animation: mdl-toast-in .18s ease forwards; }
+@keyframes mdl-toast-in {
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* --- return-to-top floating button ---------------------------------------- */
+.mdl-totop {
+  position: fixed; right: 22px; bottom: 22px; z-index: 50;
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+  font-size: 16px; cursor: pointer; box-shadow: var(--shadow), 0 4px 14px rgba(0,0,0,.12);
+  opacity: 0; pointer-events: none; transform: translateY(6px);
+  transition: opacity .18s ease, transform .18s ease, background-color .12s ease;
+}
+.mdl-totop.is-visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.mdl-totop:hover { background: color-mix(in srgb, var(--accent) 12%, var(--bg)); color: var(--accent); border-color: var(--accent); }
+.mdl-totop:active { transform: translateY(1px); }
+
+/* --- empty state: friendly placeholder when there's nothing to render ------ */
+.mdl-empty {
+  padding: 64px 24px; text-align: center; color: var(--muted);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.mdl-empty-glyph { font-size: 40px; opacity: .5; }
+.mdl-empty-text { font-size: 14px; }
+.mdl-empty-hint { font-size: 12px; opacity: .7; }
+
+/* --- WYSIWYG bar: group the save/cancel at the end, subtle sticky shadow --- */
+.mdl-wysiwyg-bar { box-shadow: 0 1px 0 var(--border); }
+.mdl-wysiwyg-bar .mdl-btn--primary { margin-left: 4px; }
+
+/* --- mindmap: title bar affordance ---------------------------------------- */
+.mdl-mindmap-bar { background: var(--toc-bg); }
+.mdl-mindmap-title { font-size: 14px; color: var(--fg); }
+
+/* --- find bar: nicer count pill ------------------------------------------- */
+.mdl-find-count {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent); padding: 2px 8px; border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.mdl-find-hit { border-radius: 3px; }
+.mdl-find-hit--active { border-radius: 3px; }
