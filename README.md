@@ -235,6 +235,7 @@ node test/feat-check.mjs       # 94 项：缺失功能端到端（含右键菜�
 node test/mathfmts-check.mjs  # 43 项：多格式数学（AsciiMath / MathML → LaTeX）
 node test/latex2md-check.mjs  # 52 项：LaTeX → Markdown 转换
 node test/pdf2md-check.mjs    # 18 项：纯 JS PDF 文本提取 + Markdown 化
+node test/pdf2md-cid-check.mjs # 11 项：中文字体（CID/identity-H + ToUnicode CMap）解码
 node test/import-check.mjs    # 15 项：一键导入管线（/api/import-md + 多格式数学渲染）
 node test/mermaid-browser.mjs  # 19 项：真实浏览器验证懒加载（需 Edge，可选）
 node tools/build.mjs           # 构建 dist/（含 mermaid 按需包）
@@ -294,7 +295,9 @@ harden-check 对两条运行路线都断言。
 
 ## 网络行为声明（隐私）
 
-- 运行时**零联网**：无更新检查、无遥测、无数据上报。
+- **默认零主动联网**：不遥测、不上报数据。
+- **唯一主动联网请求**：更新检查。exe 默认在启动时对配置的更新源（默认 GitHub Releases）
+  发一次 `GET` 比较版本，仅当发现新版本才提示；可设 `updateCheckOnStart=false` 彻底关闭。
 - 唯一网络监听：`127.0.0.1` 随机端口上的本地 HTTP（仅本机可见）。
 - 导出文件完全自包含（字体/样式/图片 base64 内联），`file://` 直接打开。
 
@@ -316,3 +319,24 @@ MIT（见 [LICENSE](LICENSE)）。内嵌组件 markdown-it / KaTeX / highlight.j
 | 多文档标签页 | 顶栏标签条，多个 .md 并排，随时切换 |
 | 母版版式 | 流式 / A4 / 幻灯片 三种排版模板，设置面板切换 |
 | 虚拟滚动 | 超长文档（>200 块）懒渲染，滚动到才画图 |
+
+## 发布新版本（触发用户自动更新）
+
+更新检查 = 比较 GitHub Releases 的 `tag_name`（如 `v1.2.0`）与本地 `Page.Version`；
+**发布一个新版本 tag + 上传 exe，所有用户下次打开 mdlight 就会自动提示更新**：
+
+```bash
+npm run build:native                      # 或 node tools/build-native.mjs，生成 dist/native/mdlight.exe
+git add -A && git commit -m "vX.Y.Z: ..." && git push origin main
+
+gh release create vX.Y.Z dist/native/mdlight.exe \
+  --repo lm846802297-bit/mdlight \
+  --title "mdlight vX.Y.Z" \
+  --notes "更新说明…"
+```
+
+要点：
+- **版本号**：`mdlight.mjs` 的 `VERSION`、`native/Page.cs` 的 `Version`、`package.json` 的 `version` 三者必须一致（用大于当前版本的新 tag），否则更新比较会误判。
+- **asset 名**必须是 `mdlight.exe`（`/api/update-check` 认这个名）。
+- 仓库已转 **public**，所以任何人都能自动收到更新；`gh api repos/lm846802297-bit/mdlight/releases/latest` 可随时查最新。
+- 若想关闭更新提醒：config.json 设 `updateCheckOnStart: false`。

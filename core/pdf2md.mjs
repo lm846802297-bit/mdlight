@@ -450,6 +450,157 @@ async function decodeStream(stream, value, objects, warnings) {
   return data;
 }
 
+// ---------------------------------------------------------------- ToUnicode CMap
+// 把一段 hex(es) 字符串（可能含空白/补位）转成字节。
+function cidHexStrToBytes(s) {
+  const clean = s.replace(/\s+/g, '');
+  const out = new Uint8Array(Math.ceil(clean.length / 2));
+  for (let i = 0; i < clean.length; i += 2) {
+    const byte = parseInt(clean.slice(i, i + 2), 16);
+    out[i >> 1] = Number.isNaN(byte) ? 0 : byte;
+  }
+  return out;
+}
+function bytesToIntNo(b) {
+  let v = 0;
+  for (let i = 0; i < b.length; i++) v = v * 256 + b[i];
+  return v;
+}
+// UTF-16BE 字面量 → JS 字符串（长度须为 2 的倍数，否则回退 latin1）。
+function cidUnicodeString(bytes) {
+  if (bytes.length % 2 === 0) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 2) s += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
+    return s;
+  }
+  return new TextDecoder('latin1').decode(bytes);
+}
+// 提取 body 里的 `<hex>` token 与 `[<hex> ...]` 数组组，用于 bfrange 行解析。
+function cidTokenizeRows(body) {
+  const items = [];
+  const re = /\[([\s\S]*?)\]|<([0-9a-fA-F\s]+)>/g;
+  let m;
+  while ((m = re.exec(body))) {
+    if (m[1] !== undefined) {
+      const inner = [];
+      const hre = /<([0-9a-fA-F\s]+)>/g;
+      let hm;
+      while ((hm = hre.exec(m[1]))) inner.push(cidHexStrToBytes(hm[1]));
+      items.push({ arr: inner });
+    } else {
+      items.push({ hex: cidHexStrToBytes(m[2]) });
+    }
+  }
+  return items;
+}
+
+// 解析 /ToUnicode CMap 流（bfchar/bfrange/codespacerange）。
+// 返回 { bfchar: Map<int,string>, bfrange: [{lo,hi,base|dests}], codespaces: [{len,lo,hi}] } 或 null。
+// 纯函数，失败返回 null 不抛。
+function parseToUnicodeCMap(cmapBytes) {
+  try {
+    if (!cmapBytes || !cmapBytes.length) return null;
+    const text = new TextDecoder('latin1').decode(cmapBytes);
+    const result = { bfchar: new Map(), bfrange: [], codespaces: [] };
+
+    const sections = [];
+    for (const key of ['codespacerange', 'bfchar', 'bfrange']) {
+      const re = new RegExp('begin' + key + '([\\s\\S]*?)end' + key, 'g');
+      let m;
+      while ((m = re.exec(text))) sections.push({ key, body: m[1] });
+    }
+    for (const sec of sections) {
+      const items = sec.key === 'bfrange' ? cidTokenizeRows(sec.body) : cidTokenizeRows(sec.body);
+      if (sec.key === 'codespacerange') {
+        let i = 0;
+        while (i + 1 < items.length) {
+          const a = items[i], b = items[i + 1];
+          if (a.hex && b.hex) {
+            result.codespaces.push({ len: Math.max(a.hex.length, b.hex.length), lo: bytesToIntNo(a.hex), hi: bytesToIntNo(b.hex) });
+            i += 2;
+          } else i += 1;
+        }
+      } else if (sec.key === 'bfchar') {
+        let i = 0;
+        while (i + 1 < items.length) {
+          const a = items[i], b = items[i + 1];
+          if (a.hex && b.hex) {
+            result.bfchar.set(bytesToIntNo(a.hex), cidUnicodeString(b.hex));
+            i += 2;
+          } else i += 1;
+        }
+      } else {
+        // bfrange：三折组 lo,hi,dst
+        let i = 0;
+        while (i + 2 < items.length) {
+          const a = items[i], b = items[i + 1], c = items[i + 2];
+          if (a.hex && b.hex && (c.hex || c.arr)) {
+            const lo = bytesToIntNo(a.hex), hi = bytesToIntNo(b.hex);
+            if (c.arr) result.bfrange.push({ lo, hi, dests: c.arr.map((d) => cidUnicodeString(d)) });
+            else result.bfrange.push({ lo, hi, base: bytesToIntNo(c.hex) });
+            i += 3;
+          } else i += 1;
+        }
+      }
+    }
+    if (!result.bfchar.size && !result.bfrange.length) return null;
+    return result;
+  } catch (_e) {
+    return null;
+  }
+}
+
+// 依据 codespaces 把原始字节切成 CID 码点序列（identity-H 通常是 2 字节）。
+function cidSegmentCodePoints(cmap, bytes) {
+  let lengths = [];
+  if (cmap.codespaces && cmap.codespaces.length) {
+    const set = new Set();
+    for (const cs of cmap.codespaces) set.add(cs.len);
+    lengths = Array.from(set);
+  } else {
+    lengths.push(2); // identity-H 默认 2 字节
+  }
+  lengths.sort((a, b) => a - b);
+  const cps = [];
+  let i = 0;
+  while (i < bytes.length) {
+    let chosen = null;
+    for (const len of lengths) {
+      if (i + len <= bytes.length) {
+        const cp = bytesToIntNo(bytes.subarray(i, i + len));
+        const ok = cmap.codespaces && cmap.codespaces.length
+          ? cmap.codespaces.some((cs) => cs.len === len && cp >= cs.lo && cp <= cs.hi)
+          : true;
+        if (ok) { chosen = cp; i += len; cps.push(chosen); break; }
+      }
+    }
+    if (chosen === null) { cps.push(bytes[i]); i += 1; }
+  }
+  return cps;
+}
+function cidLookupCode(cmap, cp) {
+  if (cmap.bfchar.has(cp)) return cmap.bfchar.get(cp);
+  for (const r of cmap.bfrange) {
+    if (cp >= r.lo && cp <= r.hi) {
+      if (Array.isArray(r.dests)) {
+        const d = r.dests[cp - r.lo];
+        return d != null ? d : '';
+      }
+      return String.fromCharCode(r.base + (cp - r.lo));
+    }
+  }
+  return '';
+}
+// CMap → bytesToUnicode 函数
+function cmapToDecoder(cmap) {
+  return (bytes) => {
+    const cps = cidSegmentCodePoints(cmap, bytes);
+    let out = '';
+    for (const cp of cps) out += cidLookupCode(cmap, cp);
+    return out;
+  };
+}
+
 // ---------------------------------------------------------------- Content text ops
 // tokenize 内容流为 [operand|keyword] 序列
 function tokenizeContent(content) {
@@ -492,7 +643,8 @@ function tokenizeContent(content) {
 }
 
 // 执行内容流，产出 textpieces 数组 [{ text, x, y, size, fontName, chars }]
-function extractTextPieces(contentBytes, warnings) {
+// fontDecoder: 可选 { 字体名: bytesToUnicodeFn }。当前字体有 decoder 时用它还原，否则 latin1 回退。
+function extractTextPieces(contentBytes, warnings, fontDecoder = null) {
   const toks = tokenizeContent(contentBytes);
   const pieces = [];
   // 文本状态
@@ -510,7 +662,13 @@ function extractTextPieces(contentBytes, warnings) {
 
   function showString(bytes) {
     if (inText) {
-      const s = new TextDecoder('latin1').decode(bytes);
+      let s = null;
+      if (fontName && fontDecoder && typeof fontDecoder[fontName] === 'function') {
+        try {
+          s = fontDecoder[fontName](bytes);
+        } catch (_e) { s = null; }
+      }
+      if (s == null) s = new TextDecoder('latin1').decode(bytes);
       if (s.length) {
         pieces.push({ text: s, x: tm[4], y: tm[5], size, fontName, chars: bytes });
       }
@@ -525,10 +683,14 @@ function extractTextPieces(contentBytes, warnings) {
     // operator
     switch (op) {
       case 'Tf': {
-        const fn = stack[stack.length - 1] && stack[stack.length - 1].op === 'NM' ? stack[stack.length - 1].v : null;
-        const szTok = stack[stack.length - 1].op === 'NU' ? stack[stack.length - 1] : null;
+        // 操作数：<font名> <size>（顺序可能是 /F1 24 或 24 /F1）。
+        let fn = null, sz = null;
+        for (const tok of stack) {
+          if (tok.op === 'NM') fn = tok.v;
+          else if (tok.op === 'NU') sz = tok.v;
+        }
         fontName = fn;
-        if (szTok && typeof szTok.v === 'number') size = szTok.v;
+        if (typeof sz === 'number') size = sz;
         stack = [];
         break;
       }
@@ -690,6 +852,39 @@ async function pageTexts(bytes, objects, trailer, warnings) {
 async function onePageText(pageNode, objects, warnings) {
   const allPieces = [];
   const pageDict = nodeDictVal(pageNode, objects);
+  // 收集 Font 资源（沿 Page 树父节点继承，父节点的 Resources 覆盖子节点的）。
+  const fontRawMap = {}; // 字体名 -> 原始 ref/dict 节点
+  (function collectFonts(node) {
+    if (!node) return;
+    const dict = nodeDictVal(node, objects);
+    if (!dict) return;
+    if (dict.v['Resources']) {
+      const res = nodeDictVal(dict.v['Resources'], objects);
+      if (res && res.v['Font']) {
+        const fontDict = nodeDictVal(res.v['Font'], objects);
+        if (fontDict) for (const fn of Object.keys(fontDict.v)) if (!(fn in fontRawMap)) fontRawMap[fn] = fontDict.v[fn];
+      }
+    }
+    const parentRaw = dict.v['Parent'];
+    if (parentRaw) collectFonts(parentRaw);
+  })(pageNode);
+  // 为每个字体解析 /ToUnicode → bytesToUnicode 函数。
+  const fontDecoder = {};
+  for (const fn of Object.keys(fontRawMap)) {
+    const fdict = nodeDictVal(fontRawMap[fn], objects);
+    if (!fdict) continue;
+    const toUnicodeRaw = fdict.v['ToUnicode'];
+    if (!toUnicodeRaw) continue;
+    const tuNode = nodeDictVal(toUnicodeRaw, objects);
+    if (!tuNode) continue;
+    const tuRefObj = objects[String(toUnicodeRaw.v)];
+    const stream = tuRefObj && tuRefObj.stream ? tuRefObj.stream : (tuNode && tuNode.stream);
+    if (stream == null) continue;
+    const dec = await decodeStream(stream, tuNode, objects, warnings);
+    if (dec == null) continue;
+    const cmap = parseToUnicodeCMap(dec);
+    if (cmap) fontDecoder[fn] = cmapToDecoder(cmap);
+  }
   const contentRaw = pageDict ? pageDict.v['Contents'] : null;
   const processContent = (raw, depth) => {
     if (depth > 20 || !raw) return;
@@ -704,7 +899,7 @@ async function onePageText(pageNode, objects, warnings) {
   const pieces = [];
   for (const o of allPieces) {
     const dec = await decodeStream(o.stream, o.value, objects, warnings);
-    if (dec) pieces.push(...extractTextPieces(dec, warnings));
+    if (dec) pieces.push(...extractTextPieces(dec, warnings, fontDecoder));
   }
   return assembleLines(pieces).join('\n');
 }
