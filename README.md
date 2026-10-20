@@ -135,6 +135,7 @@ config `updateCheckOnStart`（默认 true，改为 false 关闭启动自动检�
 **按需 mermaid 图表**、**PPT 演示模式（Marp，F5）**、
 **导出 PDF / LaTeX**、**一键导入 PDF / LaTeX → Markdown**（`/api/import-md`）、
 **超大文档懒渲染**（>200 块时 IntersectionObserver 按需绘制 + Web Worker 离线程渲染）、
+**正文行宽可选**（🎨 外观或右键菜单里选 窄 700px / 标准 860px / 宽 1100px / 全宽，选择会记住；A4、幻灯片、打印各有自己的宽度覆盖）、
 保存即热重载（**保持滚动位置**）、亮/暗/羊皮纸主题、打印样式。
 
 ## mermaid 图表：为什么“按需”很重要

@@ -200,6 +200,58 @@
   function postConfig(patch) {
     try { fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }).catch(function () {}); } catch (e) {}
   }
+  // ---- 正文行宽（窄 / 标准 / 宽 / 全宽）--------------------------------------
+  // key 是稳定的符号，存进 config.json 与 localStorage；px 只是渲染值，
+  // 0 表示不设上限（占满可用宽度）。CSS 变量 --mdl-content-max 由 .mdl-content 使用。
+  var WIDTHS = [
+    ['narrow', 700, '窄', 'Narrow'],
+    ['normal', 860, '标准', 'Standard'],
+    ['wide', 1100, '宽', 'Wide'],
+    ['full', 0, '全宽', 'Full width']
+  ];
+  function widthEntry(key) {
+    for (var i = 0; i < WIDTHS.length; i++) if (WIDTHS[i][0] === key) return WIDTHS[i];
+    return null;
+  }
+  function widthLabel(w) { return (I18N && I18N.lang() === 'en-US') ? w[3] : w[2]; }
+  function applyContentWidth(key) {
+    var w = widthEntry(key) || WIDTHS[1];
+    document.documentElement.style.setProperty('--mdl-content-max', w[1] ? w[1] + 'px' : 'none');
+    try { localStorage.setItem('mdl-content-width', w[0]); } catch (e) {}
+    return w[0];
+  }
+  function setContentWidth(key) {
+    var k = applyContentWidth(key);
+    // keep the in-memory copy in step: currentWidthKey() trusts S.cfg first,
+    // so without this reopening 🎨 would snap back to the old width
+    if (S.cfg) S.cfg.contentWidth = k;
+    postConfig({ contentWidth: k });
+  }
+  function currentWidthKey() {
+    if (S.cfg && widthEntry(String(S.cfg.contentWidth))) return String(S.cfg.contentWidth);
+    var css = getComputedStyle(document.documentElement).getPropertyValue('--mdl-content-max').trim();
+    for (var i = 0; i < WIDTHS.length; i++) {
+      var want = WIDTHS[i][1] ? WIDTHS[i][1] + 'px' : 'none';
+      if (css === want) return WIDTHS[i][0];
+    }
+    try { return localStorage.getItem('mdl-content-width') || 'normal'; } catch (e) { return 'normal'; }
+  }
+  function renderWidthSelect(container) {
+    var sel = container || document.getElementById('mdl-width-select');
+    if (!sel) return;
+    var cur = currentWidthKey();
+    sel.innerHTML = '';
+    WIDTHS.forEach(function (w) {
+      var o = document.createElement('option');
+      o.value = w[0];
+      o.textContent = widthLabel(w) + (w[1] ? '（' + w[1] + 'px）' : '');
+      if (w[0] === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+    // property assignment replaces any earlier handler, so re-rendering never
+    // stacks listeners
+    sel.onchange = function () { setContentWidth(sel.value); };
+  }
   // ---- skin picker popover ---------------------------------------------------
   function skinLabel(s) { return (I18N && I18N.lang() === 'en-US') ? s.en : s.zh; }
   function renderSkinGrid(container) {
@@ -265,7 +317,7 @@
     var pop = document.getElementById('mdl-appear-pop');
     if (!pop) return;
     var show = typeof force === 'boolean' ? force : pop.hidden;
-    if (show) { renderSkinGrid(); renderFontSelect(); }
+    if (show) { renderSkinGrid(); renderFontSelect(); renderWidthSelect(); }
     pop.hidden = !show;
   }
 
@@ -288,6 +340,7 @@
       var sv = document.getElementById('mdl-size-val');
       if (sv) sv.textContent = fs + 'px';
     }
+    if (cfg.contentWidth) applyContentWidth(String(cfg.contentWidth));
     if (cfg.theme) {
       var map = { system: 'auto', light: 'light', dark: 'dark', sepia: 'sepia' };
       var want = map[String(cfg.theme)] || String(cfg.theme);
@@ -1651,7 +1704,7 @@
     appear.type = 'button';
     appear.className = 'mdl-ctx-item';
     appear.innerHTML = '<span class="mdl-ctx-ico">🎨</span><span>' +
-      t('appearance', '外观（皮肤 / 字体 / 字号）') + '</span><span class="mdl-ctx-arrow">▸</span>';
+      t('appearance', '外观（皮肤 / 字体 / 字号 / 行宽）') + '</span><span class="mdl-ctx-arrow">▸</span>';
     ctxMenu.appendChild(appear);
     var panel = document.createElement('div');
     panel.className = 'mdl-ctx-sub';
@@ -1666,7 +1719,9 @@
         '<button class="mdl-size-btn" id="mdl-ctx-size-minus">A-</button>' +
         '<span class="mdl-size-val" id="mdl-ctx-size-val"></span>' +
         '<button class="mdl-size-btn" id="mdl-ctx-size-plus">A+</button>' +
-      '</div>';
+      '</div>' +
+      '<div class="mdl-pop-label">' + t('content-width', '正文宽度') + '</div>' +
+      '<select class="mdl-font-select" id="mdl-ctx-width-select"></select>';
     ctxMenu.appendChild(panel);
     appear.addEventListener('click', function () {
       ctxAppearOpen = !ctxAppearOpen;
@@ -1674,6 +1729,7 @@
       if (ctxAppearOpen) {
         renderSkinGrid(document.getElementById('mdl-ctx-skin-grid'));
         renderFontSelect(document.getElementById('mdl-ctx-font-select'));
+        renderWidthSelect(document.getElementById('mdl-ctx-width-select'));
         ctxSizeRefresh();
       }
     });
@@ -1748,8 +1804,15 @@
       var ff = localStorage.getItem('mdl-font');
       if (ff) document.documentElement.style.setProperty('--mdl-font', ff + ', "Segoe UI", "Microsoft YaHei", sans-serif');
     } catch (e) {}
+    // same localStorage fallback for the line width: without it the Node server
+    // (no /api/config) would forget the choice on every reload
+    try {
+      var cw = localStorage.getItem('mdl-content-width');
+      if (cw) applyContentWidth(cw);
+    } catch (e) {}
     renderSkinGrid();
     renderFontSelect();
+    renderWidthSelect();
   })();
 
   // ---- direct editing (WYSIWYG) --------------------------------------------

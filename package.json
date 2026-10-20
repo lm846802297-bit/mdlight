@@ -1,6 +1,6 @@
 {
   "name": "mdlight",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "轻量流畅的 Markdown 阅读与转换器：公式错误卡片、宏、内置源码编辑器、按需 mermaid 图表、单文件 exe（C# + WebView2 原生宿主）",
   "license": "MIT",
   "bin": {

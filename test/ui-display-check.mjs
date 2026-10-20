@@ -102,14 +102,57 @@ const res = await ev(c, `(async()=>{
   // 注意：content-visibility:auto 会「跳过」屏幕外子树，此时 scrollWidth 只是占位值，
   // 必须先把这条超宽公式滚进视口再量，否则测到的是假几何。
   const wide = eqs[eqs.length - 1];
-  if (wide) { wide.scrollIntoView({ block: 'center' }); await new Promise(r=>setTimeout(r,400)); }
-  const wideOverflow = wide ? wide.scrollWidth - wide.clientWidth : 0;
-  let wideScrollLeft = 0;
-  if (wide) { wide.scrollLeft = 400; await new Promise(r=>setTimeout(r,80)); wideScrollLeft = wide.scrollLeft; }
+  let wideOverflow = 0, wideScrollLeft = 0, wideOverflowX = null;
+  if (wide) {
+    wide.scrollIntoView({ block: 'center' });
+    await new Promise(r=>setTimeout(r,200));
+    // content-visibility:auto 会把屏幕外元素的几何变成占位值（scrollWidth 不反映真实内容），
+    // 而且「何时算进入视口」在不同机器负载下时机不同 —— 固定等待会偶发测到假几何。
+    // 因此测量期间临时把这一层设为 visible，量完立刻还原：量的是「内容本身有多宽」
+    // 和「容器本身的 overflow-x 能不能滚」，与是否已进入视口无关。
+    const savedCV = wide.style.contentVisibility;
+    const kids = [...wide.children];
+    wide.style.contentVisibility = 'visible';
+    kids.forEach(k => { k.style.contentVisibility = 'visible'; });
+    await new Promise(r=>setTimeout(r,200));
+    wideOverflow = wide.scrollWidth - wide.clientWidth;
+    wideOverflowX = getComputedStyle(wide).overflowX;
+    wide.scrollLeft = 400;
+    await new Promise(r=>setTimeout(r,150));
+    wideScrollLeft = wide.scrollLeft;
+    wide.style.contentVisibility = savedCV;
+    kids.forEach(k => { k.style.contentVisibility = ''; });
+  }
   const widest = eqs.reduce((a,e)=>Math.max(a, e.getBoundingClientRect().width), 0);
   const paneScrollW = document.documentElement.scrollWidth;
   const toast = document.getElementById('mdl-toast');
+
+  // ---- 正文行宽：窄 / 标准 / 宽 / 全宽 ------------------------------------
+  // 用户要求「行宽可选」，这里真的去改 🎨 外观里的下拉并量正文宽度，
+  // 而不是只检查 DOM 里存在一个 select。
+  const wsel = document.getElementById('mdl-width-select');
+  const setWidth = async (key) => {
+    wsel.value = key;
+    wsel.dispatchEvent(new Event('change'));
+    await new Promise(r=>setTimeout(r,150));
+    return Math.round(content.getBoundingClientRect().width);
+  };
+  const widths = {};
+  if (wsel) {
+    widths.narrow = await setWidth('narrow');
+    widths.normal = await setWidth('normal');
+    widths.wide = await setWidth('wide');
+    widths.full = await setWidth('full');
+    widths.available = content.parentElement ? Math.round(content.parentElement.clientWidth) : 0;
+    widths.backToNormal = await setWidth('normal');
+  }
+  let widthLS = null;
+  try { widthLS = localStorage.getItem('mdl-content-width'); } catch (e) {}
+
   return {
+    widthOptions: wsel ? [...wsel.options].map(o=>o.value) : null,
+    widths: widths,
+    widthLS: widthLS,
     viewport: window.innerWidth + 'x' + window.innerHeight,
     h3: h3s.map(h=>h.textContent.trim()),
     h3Merged: h3s.some(h=>/mdToLatex|core\\/renderer/.test(h.textContent)),
@@ -119,6 +162,7 @@ const res = await ev(c, `(async()=>{
     eq: eqs.length,
     widestEq: Math.round(widest),
     wideOverflow: Math.round(wideOverflow),
+    wideOverflowX: wideOverflowX,
     wideScrollLeft: Math.round(wideScrollLeft),
     paneW: content.clientWidth,
     docScrollW: paneScrollW,
@@ -146,8 +190,19 @@ else {
   ok(res.tocOverflowY === 'auto', '目录面板可滚动 (overflow-y:auto)', String(res.tocOverflowY));
   ok(res.tocScrollable, '目录条目多时确实产生滚动（不被裁掉）');
   ok(res.wideOverflow > 100, 'fixture 里确实有一条远超内容区宽的公式（测量有效）', 'overflow=' + res.wideOverflow + 'px, pane=' + res.paneW);
+  ok(res.wideOverflowX === 'auto', '超宽 display 公式的容器 overflow-x:auto（可横向滚动）', String(res.wideOverflowX));
   ok(res.wideScrollLeft > 0, '超宽 display 公式能横向滚动到尾部（不会被裁掉）', 'scrollLeft=' + res.wideScrollLeft);
   ok(!res.toastVisible, '加载后没有弹 toast（自动检查更新静默）', res.toastText);
+
+  // 行宽可选（用户需求：现在的文字只在中间、位置太小）
+  const W = res.widths || {};
+  ok(Array.isArray(res.widthOptions) && res.widthOptions.join(',') === 'narrow,normal,wide,full',
+    '🎨 外观里有四个行宽选项（窄/标准/宽/全宽）', JSON.stringify(res.widthOptions));
+  ok(W.narrow === 700 && W.normal === 860, '窄 = 700px、标准 = 860px', JSON.stringify(W));
+  ok(W.wide === 1100, '宽 = 1100px', String(W.wide));
+  ok(W.full > W.wide, '全宽占满可用宽度', W.full + ' vs 宽 ' + W.wide + '，可用 ' + W.available);
+  ok(W.backToNormal === 860, '切换回标准仍是 860px', String(W.backToNormal));
+  ok(res.widthLS === 'normal', '行宽选择会持久化（localStorage）', String(res.widthLS));
 }
 
 console.log('\n结果: ' + pass + ' 通过, ' + fail + ' 失败');

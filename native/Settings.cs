@@ -117,6 +117,25 @@ namespace Mdlight
             f.Controls.Add(sizeNum);
             y += 32;
 
+            // 正文宽度（窄 / 标准 / 宽 / 全宽）— 与网页端 🎨 外观里的
+            // 「正文宽度」共用 config.json 的 contentWidth 键
+            L("正文宽度:", y);
+            var widthCombo = new ComboBox();
+            widthCombo.Location = new Point(120, y - 2);
+            widthCombo.Width = 200;
+            widthCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            widthCombo.Items.Add("窄 (700px)");
+            widthCombo.Items.Add("标准 (860px)");
+            widthCombo.Items.Add("宽 (1100px)");
+            widthCombo.Items.Add("全宽");
+            string contentWidth = Cfg("contentWidth", "normal");
+            int widthIdx = contentWidth == "narrow" ? 0
+                         : contentWidth == "wide" ? 2
+                         : contentWidth == "full" ? 3 : 1;
+            widthCombo.SelectedIndex = widthIdx;
+            f.Controls.Add(widthCombo);
+            y += 32;
+
             // 主题
             L("主题:", y);
             var themeCombo = new ComboBox();
@@ -189,6 +208,9 @@ namespace Mdlight
                     var patch = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
                     patch["font"] = fontCombo.Text;
                     patch["fontSize"] = (double)sizeNum.Value;
+                    patch["contentWidth"] = widthCombo.SelectedIndex == 0 ? "narrow"
+                                          : widthCombo.SelectedIndex == 2 ? "wide"
+                                          : widthCombo.SelectedIndex == 3 ? "full" : "normal";
                     patch["theme"] = (string)themeCombo.SelectedItem;
                     patch["language"] = (string)langCombo.SelectedItem;
                     patch["hardBreaks"] = hardBox.Checked;

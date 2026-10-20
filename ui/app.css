@@ -25,6 +25,9 @@
      is set; code font stays monospace so indentation never shifts. */
   --mdl-font: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
   --mdl-font-size: 15.5px;
+  /* 正文行宽：🎨 外观里的「正文宽度」/ config.json 的 contentWidth 会把它改成
+     700px / 860px / 1100px / none（全宽）。A4、幻灯片、打印各有自己的覆盖。 */
+  --mdl-content-max: 860px;
   --mdl-mono-font: Consolas, "Cascadia Code", monospace;
 }
 body[data-theme="dark"] {
@@ -330,7 +333,7 @@ body {
 
 .mdl-content {
   flex: 1; min-width: 0;
-  max-width: 860px;
+  max-width: var(--mdl-content-max);
   margin: 0 auto;
   padding: 28px 40px 80px;
 }
