@@ -35,10 +35,10 @@ for (let i = 0; i < argv.length; i++) {
   else if (!fileArg && !a.startsWith('-')) fileArg = a;
 }
 
-const VERSION = '0.8.2';
+const VERSION = '0.9.0';
 
 if (wantHelp || (!fileArg && !wantVersion)) {
-  console.log(`mdlight ${VERSION} — 轻量、离线、零遥测的本地 Markdown 阅读器
+  console.log(`mdlight ${VERSION} — 轻量流畅的 Markdown 阅读与转换器（全格式数学·PDF/LaTeX互换）
 
 用法:
   mdlight <file.md>                     预览（自动弹出无边框窗口）
@@ -222,7 +222,15 @@ const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i;
 // which would break a file-handle watcher) and filter by basename.
 const clients = new Set();
 let reloadTimer = null;
+let _watcher = null;
+function broadcastReload() {
+  const msg = 'data: reload\n\n';
+  for (const res of clients) {
+    try { res.write(msg); } catch { clients.delete(res); }
+  }
+}
 function startWatcher() {
+  if (_watcher) { try { _watcher.close(); } catch { /* ignore */ } _watcher = null; }
   const dir = dirname(mdPath);
   const base = basename(mdPath).toLowerCase();
   try {
@@ -231,14 +239,10 @@ function startWatcher() {
       // reload on the md file itself, or a sibling custom.css override
       if (f && f !== base && f !== 'custom.css') return;
       clearTimeout(reloadTimer);
-      reloadTimer = setTimeout(() => {
-        const msg = 'data: reload\n\n';
-        for (const res of clients) {
-          try { res.write(msg); } catch { clients.delete(res); }
-        }
-      }, 150);
+      reloadTimer = setTimeout(broadcastReload, 150);
     });
     w.on('error', () => { try { w.close(); } catch { /* ignore */ } });
+    _watcher = w;
   } catch { /* best-effort */ }
 }
 
@@ -408,6 +412,47 @@ const server = createServer((req, res) => {
 
   if (path === '/api/open-editor') {
     json(res, openInEditor(Number(url.searchParams.get('line') || 1)));
+    return;
+  }
+
+  // POST /api/import-md — body {"name":"X.md","content":"...markdown..."}.
+  // Writes a markdown file next to the current doc (from an imported
+  // PDF/LaTeX source) and swaps to it, so "一键导入" produces an editable .md
+  // immediately. Same shape/guards as the native host's HandleOpenFile drop.
+  if (req.method === 'POST' && path === '/api/import-md') {
+    let body = '';
+    req.on('data', (c) => { body += c; if (body.length > 64 * 1024 * 1024) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const { name, content } = JSON.parse(body);
+        if (!name || typeof content !== 'string') {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'name+content required' }));
+          return;
+        }
+        if (!/\.(md|markdown)$/i.test(name) || name.indexOf(':') >= 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'name must be a .md file' }));
+          return;
+        }
+        const target = resolve(dirname(mdPath), basename(name));
+        if (target === resolve(mdPath)) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'refusing to overwrite the open document' }));
+          return;
+        }
+        writeFileSync(target, content, 'utf8');
+        // Swap the served document to the newly imported .md and make the
+        // open page reload it (mirrors native SwapDoc-on-import).
+        mdPath = target;
+        startWatcher();
+        setTimeout(broadcastReload, 30);
+        json(res, { ok: true, path: target });
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: String(e && e.message || e) }));
+      }
+    });
     return;
   }
 

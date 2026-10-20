@@ -352,6 +352,15 @@ namespace Mdlight
                 return;
             }
 
+            // ⇣ import-md: body {"name":"X.md","content":"...markdown..."}; write the
+            // converted .md next to the doc and swap to it (一键导入 result).
+            if (path == "/api/import-md" &&
+                string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                HandleImportMd(req, res);
+                return;
+            }
+
             // 📊 export: the page posts the CSV text; we write it next to the doc.
             if (path == "/api/export-csv" &&
                 string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
@@ -707,6 +716,55 @@ namespace Mdlight
             // Re-point the watcher at the new file and tell the page to reload.
             SwapDoc(new Doc(outPath));
             SendJson(res, "{\"ok\":true,\"path\":" + Util.JsonStr(outPath) + "}");
+        }
+
+        /// <summary>POST /api/import-md — body {"name":"X.md","content":"...markdown..."};
+        /// write the converted markdown next to the doc and swap to it. Same shape
+        /// and guards as the "drop" branch of HandleOpenFile, so an imported
+        /// PDF/LaTeX → Markdown result becomes an editable document immediately.</summary>
+        private void HandleImportMd(HttpListenerRequest req, HttpListenerResponse res)
+        {
+            try
+            {
+                if (req.ContentLength64 > 64L * 1024 * 1024)
+                {
+                    SendError(res, 413, "too large");
+                    return;
+                }
+                string body;
+                using (Stream s = req.InputStream)
+                {
+                    body = Encoding.UTF8.GetString(Util.ReadAll(s));
+                }
+                string name = Json.GetString(body, "name");
+                string content = Json.GetString(body, "content");
+                if (string.IsNullOrEmpty(name) || content == null)
+                {
+                    SendError(res, 400, "name+content required");
+                    return;
+                }
+                name = System.IO.Path.GetFileName(name);
+                if (!name.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
+                    !name.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase))
+                {
+                    SendError(res, 400, "name must be a .md file");
+                    return;
+                }
+                string outPath = System.IO.Path.Combine(doc.Dir, name);
+                if (string.Equals(System.IO.Path.GetFullPath(outPath), doc.FullPath,
+                                  StringComparison.OrdinalIgnoreCase))
+                {
+                    SendError(res, 400, "refusing to overwrite the open document");
+                    return;
+                }
+                System.IO.File.WriteAllText(outPath, content, new UTF8Encoding(false));
+                SwapDoc(new Doc(outPath));
+                SendJson(res, "{\"ok\":true,\"path\":" + Util.JsonStr(outPath) + "}");
+            }
+            catch (Exception e)
+            {
+                SendJson(res, "{\"ok\":false,\"error\":" + Util.JsonStr(e.Message) + "}");
+            }
         }
 
         private void HandleExportCsv(HttpListenerRequest req, HttpListenerResponse res)

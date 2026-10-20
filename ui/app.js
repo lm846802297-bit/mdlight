@@ -694,6 +694,72 @@
   var texBtn = document.getElementById('mdl-btn-tex');
   if (texBtn) texBtn.addEventListener('click', exportLatex);
 
+  // ---- ⇣ import PDF / LaTeX → Markdown (一键导入) ----------------------------
+  // Hidden file inputs let the toolbar buttons open a native picker. The file is
+  // read client-side, converted with the bundled converter, written next to the
+  // current doc via /api/import-md, and swapped in — so "导入" immediately yields
+  // an editable .md the user can keep editing.
+  function addImportPicker(id, accept, onFile) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.addEventListener('change', function () {
+      var f = input.files && input.files[0];
+      if (f) onFile(f);
+      input.value = ''; // allow re-picking the same file
+    });
+    btn.addEventListener('click', function () { input.click(); });
+  }
+
+  function importToMd(name, markdown, srcLabel) {
+    fetch('/api/import-md', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, content: markdown }),
+    }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok) toast(t('imported', '已导入并打开 {src} → {name}').replace('{src}', srcLabel).replace('{name}', name));
+        else toast(t('import-failed', '导入失败') + ': ' + ((j && j.error) || ''));
+      })
+      .catch(function () { toast(t('no-service', '无法联系 mdlight 服务')); });
+  }
+
+  addImportPicker('mdl-btn-import-tex', '.tex,.bbl,.latex', function (f) {
+    var fr = new FileReader();
+    fr.onload = function () {
+      var tex = String(fr.result || '');
+      var io = (f.name || 'import').replace(/\.[^.]*$/, '') + '.md';
+      var mod = window.MDLRenderer;
+      if (!mod || typeof mod.latexToMarkdown !== 'function') { toast(t('import-failed', '导入失败') + ': latexToMarkdown 未加载'); return; }
+      var md;
+      try { md = mod.latexToMarkdown(tex); }
+      catch (e) { toast(t('import-failed', '导入失败') + ': ' + (e && e.message || e)); return; }
+      importToMd(io, md, f.name);
+    };
+    fr.readAsText(f, 'utf-8');
+  });
+  addImportPicker('mdl-btn-import-pdf', '.pdf', function (f) {
+    var fr = new FileReader();
+    fr.onload = function () {
+      var bytes = new Uint8Array(fr.result);
+      var io = (f.name || 'import').replace(/\.[^.]*$/, '') + '.md';
+      var mod = window.MDLRenderer;
+      if (!mod || typeof mod.pdfToMarkdown !== 'function') { toast(t('import-failed', '导入失败') + ': pdfToMarkdown 未加载'); return; }
+      var r = mod.pdfToMarkdown(bytes);
+      Promise.resolve(r).then(function (res) {
+        if (res && res.markdown) importToMd(io, res.markdown, f.name);
+        else toast(t('import-failed', '导入失败') + ': ' + ((res && res.warnings && res.warnings.join('; ')) || '无文本'));
+      }).catch(function (e) {
+        toast(t('import-failed', '导入失败') + ': ' + (e && e.message || e));
+      });
+    };
+    fr.readAsArrayBuffer(f);
+  });
+
   
   // ---- ⇄ side-by-side dual view ------------------------------------------------
   // Split the content area into two panes. The left pane keeps the current doc;

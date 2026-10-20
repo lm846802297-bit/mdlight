@@ -1,9 +1,9 @@
 # mdlight — 方案定稿
 
-> **状态：✅ 已实现并通过全部验证（2026-10-24，v0.8.1）** — `npm test` 共 **437 + 24 项断言全绿**：
-> 51 渲染 + 25 宏 + 17 dist 独立运行 + 12 Node/native 渲染奇偶校验 +
-> 45 原生 exe 自足（真实浏览器）+ 29 WYSIWYG 直接编辑 + 11 配置 + 22 安全加固 + 94 功能特性 + 9 公式序列化/配置 + **24 PPT 演示模式（Marp，含无头 Edge 端到端）**。
-> 实现细节以代码与 README.md 为准。
+> **定位**：轻量流畅的 Markdown 阅读与转换器 —— 大文档流畅不卡、全格式数学、
+> PDF/LaTeX 双向互换。
+> **状态：✅ 已实现并通过验证** —
+> 多格式数学（AsciiMath / MathML）、PDF/LaTeX → MD 一键导入已合入。
 > 一个从零实现的开源本地 Markdown 阅读器。架构思想参考业界公开工程模式
 > （本地服务器 + WebView 壳 + 内嵌前端资源 + SSE 热重载 + 行号埋点），**不包含任何
 > 闭源第三方代码**——所有组件开源、所有代码从零编写。零遥测、零联网运行时、无授权锁。
@@ -35,6 +35,8 @@
 | 安全加固（v0.7.1） | **同源校验守全部 `/api/*` + `/events`**，保存/配置写入加锁 | `127.0.0.1` 只挡住远端，挡不住**同机任意网页**发起的 CORS 简单请求（`text/plain` 无预检）——此前任何站点都能 POST `/api/save` 覆盖用户正开着的文档。校验规则：`Sec-Fetch-Site` 必须 `same-origin`/`none`，带 `Origin` 时必须等于自己的端口，否则 403。同轮修的 `Doc.Save` 并发（固定 tmp 名 + 先删原件的 fallback 可能真删掉文档）改为加锁 + GUID tmp + 永不先删原件；`Config.Set` 同理。每条都有 `test/harden-check.mjs` 回归（22 项，覆盖 Node/native 两条路线） |
 | native 渲染性能（v0.7.1） | **Web Worker 离线程渲染 + 渐进占位**，主线程不被 KaTeX 阻塞 | native 端无 Node，只能靠浏览器渲染——文档一大会卡死主线程（白屏、无法滚动）。把整条管线（markdown-it + KaTeX `renderToString` + hljs）搬进 Web Worker：这些全是**纯字符串工作、不碰 DOM**，天然能在后台线程跑。先往 `<pre class="mdl-source-preview">` 塞 markdown 原文让浏览器 paint 一帧（用户立刻看到文档已加载），再异步跑 Worker、`innerHTML` 替换。**实测（745 KB / 12000 公式，native exe + headless Edge）**：渲染 5.6 s 期间主线程 37 帧、36 帧 <20 ms（可滚动可交互），而同步渲染全程 0 帧白屏；剩的约 967 ms 单次长帧是浏览器解析 27 MB 渲染结果的硬成本。实现：`ui/renderer-worker.js`（`importScripts` 加载 `renderer.js`，esbuild IIFE 的 `MDLRenderer` 全局在 Worker 里同样成立）+ `app.js` 的 `renderInWorker()`（**缓存 Worker 复用**、请求 ID 丢弃过期响应、60 s 超时回退同步）。file:// 导出的单文件因 CORS 无法用 Worker，`data-live` 为假时直接走同步渲染 |
 | PPT 演示模式（v0.8.0） | **Marp 语法：frontmatter `marp: true` + `---` 分页**，F5 全屏放映 + 演讲者 HUD | 同类软件把幻灯片做成独立渲染管线（Typst/PDFium）。我们只做最薄的一层：复用同一渲染器，frontmatter 声明后按 `---` 切页，阅读模式显示全部页，放映模式全屏逐页 + 页脚宏 + 计时器。不引入任何新依赖 |
+| 多格式数学（v0.9.0） | **LaTeX / AsciiMath / MathML 三写法全部渲染为 KaTeX** | 定位"完整渲染所有数学公式、兼容多种格式"。在 markdown-it 解析前加一道同步预处理器 `preprocessMathSync`（`core/mathfmts.mjs`）：AsciiMath（反引号`` `x^2+1` ``）→ LaTeX、MathML（`<math>…</math>`，含 display block / 分数 / 上下标 / 根号）→ `$$...$$` / `$...$`。反引号内若含 `\(`/`\)`/`\[`/`\]`/`$` 视为代码不转换，保住"代码永不误判为公式"（缺陷 #1）。零新运行时依赖（asciimath-to-latex 仅 Node 开发期用，浏览器回退内置子集） |
+| 一键导入 PDF/LaTeX（v0.9.0） | **⇣PDF / ⇣TeX 转 Markdown**（`/api/import-md`） | 定位"支持一键导入 PDF 和 LaTeX 直接转 md"。转换在客户端完成：LaTeX→MD 用 `core/latex2md.mjs`，PDF→MD 用 **零依赖纯 JS PDF 文本提取器** `core/pdf2md.mjs`（对象表扫描 + FlateDecode + 文本算子 Tj/TJ/Td/Tm，不打包 36MB 的 pdfjs-dist，保住 7MB 单 exe 轻量定位）。转换结果 POST 到 `/api/import-md` 写入 doc 目录并立即交换为当前文档。中文 identity-H/CID 字体系抽取边界，给出 warnings 而非崩溃 |
 
 
 ## 2. 架构

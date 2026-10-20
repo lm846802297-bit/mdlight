@@ -1,7 +1,11 @@
 # mdlight
 
-> 轻量、离线、零遥测的本地 Markdown 阅读器 —— 修复了同类软件的已知缺陷。
-> A lightweight, offline, zero-telemetry local Markdown viewer.
+> **轻量、流畅的 Markdown 阅读与转换器。** 打开大型 Markdown 文档依然流畅不卡；完整渲染
+> **所有常见数学公式格式**（LaTeX / AsciiMath / MathML）；支持**导出 PDF / LaTeX**，也支持
+> **一键导入 PDF / LaTeX** 并直接转换为可编辑的 Markdown。
+> A lightweight, smooth Markdown viewer & converter: large docs stay responsive,
+> all major math dialects (LaTeX / AsciiMath / MathML) render fully, with
+> PDF/LaTeX **export** and one-click **PDF/LaTeX → Markdown import**.
 
 **背景**：本项目的架构思想来自业界广泛使用的本地服务器 + WebView 壳 + SSE 热重载 +
 行号定位的**公开工程模式**。所有代码从零编写，全部组件开源（MIT）。同类软件的常见缺陷，
@@ -65,6 +69,8 @@ mdlight.exe                           无参数：弹出文件选择框（仅 ex
 | （选中公式 + Ctrl+C） | 复制公式时按**原格式**：剪贴板拿到的是 LaTeX 源码（如 `E = mc^2`、`\alpha + \beta`），不是渲染后的显示文本。公式右上角悬停也会出现 ⧉ 复制按钮，一键复制源码 |
 | （右键菜单） | 任意位置右键打开快捷菜单：首项 🎨 **外观**（16 种皮肤模式 / 正文字体 / 字号 A±），往下是主题循环、目录、查找、双栏分屏、大纲脑图、源码视图、直接编辑、外部编辑器、打印、导出 CSV、导出 PDF、设置、语言切换 |
 | TeX 按钮 | 一键将 Markdown 导出为 LaTeX (.tex)，标题 → section、表格 → tabular、代码 → verbatim、公式通过、mermaid → 注释 |
+| ⇣PDF / ⇣TeX 按钮 | **一键导入** PDF 或 LaTeX 文件，自动转换成 Markdown 并立即打开为可编辑文档（`/api/import-md`） |
+| （自动） | **多格式公式**：同一份文档里 `$...$`（LaTeX）、`` `x^2+1` ``（AsciiMath）、`<math>…</math>`（MathML）三种数学写法全部渲染为 KaTeX 高质量公式 |
 | （自动） | ` ```mermaid ` 图表：仅当文档含图表时才下载引擎，且只取用到的类型 |
 
 ```bat
@@ -114,10 +120,13 @@ set MD_EDITOR=code --goto "{file}:{line}"
  | 新 | 没有 PPT 演示模式，幻灯片文档只能逐行滚动阅读 | **PPT 演示模式（Marp，v0.8.0）**：文档 YAML frontmatter 写 `marp: true` 后按 `---` 自动分页；F5 全屏放映（顶栏 ▶ 按钮同样进入），方向键/空格翻页，页脚支持 `{title}/{page}/{total}/{date}` 宏，演讲者计时器，Esc 退出；阅读模式显示全部幻灯片且可正常跳转 | `test/marp-check.mjs` 24 项（含无头 Edge 端到端） |
 
 另附原生能力：显示/行内公式、**AI 方言定界符 `\(...\)` / `\[...\]`**（ChatGPT/Claude/Pandoc
-的输出即贴即渲染，两种方言自由混用）、mhchem 化学式、`\newcommand` 宏（含带参数宏）、callout（6 类）、
+的输出即贴即渲染，两种方言自由混用）、**AsciiMath**（`` `x^2+1` `` 反引号数学）、**MathML**
+（`<math>…</math>`，含 display block、分数/上下标/根号等基础结构）、mhchem 化学式、`\newcommand` 宏（含带参数宏）、callout（6 类）、
 任务列表、`[[双链]]`（点击复制语法）、表格对齐、TOC（滚动高亮）、行号定位（F2）、
 **源码视图（Ctrl+E，编辑态里的源码切换）**、**直接编辑（Ctrl+Shift+E，所见即所得）**、
 **按需 mermaid 图表**、**PPT 演示模式（Marp，F5）**、
+**导出 PDF / LaTeX**、**一键导入 PDF / LaTeX → Markdown**（`/api/import-md`）、
+**超大文档懒渲染**（>200 块时 IntersectionObserver 按需绘制 + Web Worker 离线程渲染）、
 保存即热重载（**保持滚动位置**）、亮/暗/羊皮纸主题、打印样式。
 
 ## mermaid 图表：为什么“按需”很重要
@@ -215,9 +224,13 @@ node test/eqserial-check.mjs   # 6 项：公式序列化
 node test/config-check.mjs     # 11 项：配置读写与应用（MDLIGHT_CONFIG_DIR 隔离）
 node test/harden-check.mjs     # 22 项：安全加固回归（同源校验/并发保存/CSV 覆盖/port 吞参/Node API）
 node test/feat-check.mjs       # 94 项：缺失功能端到端（含右键菜单、复制公式 LaTeX，CDP 真实浏览器）
+node test/mathfmts-check.mjs  # 43 项：多格式数学（AsciiMath / MathML → LaTeX）
+node test/latex2md-check.mjs  # 52 项：LaTeX → Markdown 转换
+node test/pdf2md-check.mjs    # 18 项：纯 JS PDF 文本提取 + Markdown 化
+node test/import-check.mjs    # 15 项：一键导入管线（/api/import-md + 多格式数学渲染）
 node test/mermaid-browser.mjs  # 19 项：真实浏览器验证懒加载（需 Edge，可选）
 node tools/build.mjs           # 构建 dist/（含 mermaid 按需包）
-npm test                       # 上面除 browser 外的全部（302 项断言）
+npm test                       # 上面除 browser 外的全部
 ```
 
 exe 测试特别验证「自足」这一点：把 `mdlight.exe` **单独**拷进一个空临时目录

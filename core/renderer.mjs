@@ -5,6 +5,10 @@ import MarkdownIt from 'markdown-it';
 import katex from 'katex';
 import 'katex/contrib/mhchem';
 import hljs from 'highlight.js/lib/common';
+// Multi-format math: AsciiMath (`x^2` / asciimath: blocks) and inline MathML
+// (<math>…) are normalized to LaTeX before markdown parsing, so KaTeX renders
+// them. Purely synchronous; safe in both Node and the esbuild browser bundle.
+import { preprocessMathSync } from './mathfmts.mjs';
 
 // ---------------------------------------------------------------------------
 // utils
@@ -558,6 +562,12 @@ export function makeRenderer(opts) {
       // heading is lost. Notepad saves with BOM by default — strip it.
       let clean = typeof src === 'string' && src.charCodeAt(0) === 0xFEFF ? src.slice(1) : src;
 
+      // Multi-format math pre-pass: normalize AsciiMath / MathML to LaTeX so
+      // the same KaTeX pipeline renders every dialect. Runs once for the whole
+      // doc; for Marp slides we normalize per-chunk (chunk content is still
+      // markdown source, so the call applies cleanly there too).
+      clean = preprocessMathSync(clean);
+
       // Marp / PPT: detect the frontmatter and, when `marp: true`, render each
       // slide independently so the UI can page through them. Every slide reuses
       // the same macro table / slug set, so equations and anchors stay stable.
@@ -597,6 +607,14 @@ export function makeRenderer(opts) {
 export function render(src, opts) {
   return makeRenderer(opts).render(src);
 }
+
+// Import/converters that the browser bundle exposes on window.MDLRenderer too:
+// the import buttons run latexToMarkdown / pdfToMarkdown client-side. Importing
+// them here (instead of in app.js) keeps a single esbuild entry point and
+// guarantees they are present in both the server and the packed browser bundle.
+export { latexToMarkdown } from './latex2md.mjs';
+export { pdfToMarkdown, pdfExtractText, pdfExtractPages } from './pdf2md.mjs';
+export { preprocessMathSync, preprocessMath, mathmlToLatexInline } from './mathfmts.mjs';
 
 // ---------------------------------------------------------------------------
 
