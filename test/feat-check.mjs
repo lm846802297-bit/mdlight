@@ -158,7 +158,13 @@ try {
   await sleep(400);
   ok(await ev("document.getElementById('mdl-find').hidden === false"), 'Ctrl+F 打开查找栏');
   await ev("(function(){var i=document.getElementById('mdl-find-input'); i.value='属于'; i.dispatchEvent(new Event('input',{bubbles:true}));})()");
-  await sleep(500);
+  await sleep(250);
+  // Typing no longer searches per keystroke: matching now runs on Enter/blur
+  // (IME-safe, and the same contract as the reference reader), so the first
+  // Enter is what produces the hits.
+  ok(await ev("document.querySelectorAll('#mdl-content mark.mdl-find-hit').length") === 0, '输入过程不实时搜索');
+  await ev("document.getElementById('mdl-find-input').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))");
+  await sleep(400);
   ok(await ev("document.querySelectorAll('#mdl-content mark.mdl-find-hit').length") === 3, '高亮 3 个匹配', await ev("document.querySelectorAll('#mdl-content mark.mdl-find-hit').length"));
   ok(await ev("document.getElementById('mdl-find-count').textContent") === '1/3', '计数显示 1/3', await ev("document.getElementById('mdl-find-count').textContent"));
   ok(await ev("document.querySelector('#mdl-content mark.mdl-find-hit').textContent") === '属于', '匹配文本正确');
@@ -166,6 +172,9 @@ try {
   await ev("document.getElementById('mdl-find-input').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))");
   await sleep(300);
   ok(await ev("document.getElementById('mdl-find-count').textContent") === '2/3', 'Enter 跳到下一个 → 2/3', await ev("document.getElementById('mdl-find-count').textContent"));
+  await ev("document.getElementById('mdl-find-input').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true}))");
+  await sleep(300);
+  ok(await ev("document.getElementById('mdl-find-count').textContent") === '1/3', 'Shift+Enter 回到上一个 → 1/3', await ev("document.getElementById('mdl-find-count').textContent"));
   await ev("document.getElementById('mdl-find-close').click()");
   await sleep(300);
   ok(await ev("document.getElementById('mdl-find').hidden === true"), '关闭查找栏');

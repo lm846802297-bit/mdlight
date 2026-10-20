@@ -362,15 +362,24 @@ namespace Mdlight
 
             if (path == "/api/open-editor")
             {
-                int line = 1;
+                // line may be absent: 0 means "unknown", so the launcher omits
+                // the ":line" suffix instead of opening a bogus position.
+                int line = 0;
                 string q = req.QueryString["line"];
                 if (!string.IsNullOrEmpty(q)) int.TryParse(q, out line);
-                string via = Editor.Open(doc.FullPath, line);
-                if (via == null)
-                    SendJson(res, "{\"ok\":false,\"error\":\"" +
-                                  "未找到编辑器；请设置 MD_EDITOR（见 --help）\"}");
+                if (line < 0) line = 0;
+                EditorLaunch r = Editor.OpenEx(doc.FullPath, line);
+                if (r.Via == null)
+                {
+                    Util.Log("open-editor failed: " + r.Error);
+                    SendJson(res, "{\"ok\":false,\"error\":" + Util.JsonStr(r.Error) +
+                                  ",\"hint\":" + Util.JsonStr(
+                                      "可设置环境变量 MD_EDITOR，例如 code --goto {file}:{line}") + "}");
+                }
                 else
-                    SendJson(res, "{\"ok\":true,\"via\":" + Util.JsonStr(via) + "}");
+                {
+                    SendJson(res, "{\"ok\":true,\"via\":" + Util.JsonStr(r.Via) + "}");
+                }
                 return;
             }
 

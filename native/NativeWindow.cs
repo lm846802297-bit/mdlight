@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -36,6 +37,24 @@ namespace Mdlight
         private const int HTBOTTOM = 15, HTBOTTOMLEFT = 16, HTBOTTOMRIGHT = 17;
         private const int RESIZE_MARGIN = 7;
 
+        // ---- remembered window geometry ---------------------------------------
+        // Saved to config.json (winWidth/winHeight/winX/winY/winMaximized) so a
+        // relaunch lands where the user left the window. Anything implausible
+        // (zero size, off-screen coordinates from a monitor that is gone) is
+        // rejected and we fall back to the old 1200x860 centred default.
+        private const int DefaultWindowWidth = 1200;
+        private const int DefaultWindowHeight = 860;
+        private const int MinWindowWidth = 520;
+        private const int MinWindowHeight = 360;
+        private const int MinVisiblePx = 80;          // at least this much on a monitor
+        private const int GeometrySaveDelayMs = 700;  // debounce resize/move storms
+
+        private Timer geometryTimer;
+        private bool geometryHooked;
+        private bool lastWasMaximized;
+        private Rectangle lastNormalBounds;
+        private string lastGeometrySignature;
+
         [StructLayout(LayoutKind.Sequential)]
         private struct MARGINS { public int Left, Right, Top, Bottom; }
         [DllImport("dwmapi.dll")]
@@ -47,14 +66,17 @@ namespace Mdlight
             this.doc = doc;
 
             Text = "mdlight — " + doc.Name;
-            ClientSize = new Size(1200, 860);
-            MinimumSize = new Size(520, 360);
-            StartPosition = FormStartPosition.CenterScreen;
+            MinimumSize = new Size(MinWindowWidth, MinWindowHeight);
             BackColor = Color.White;
 
             // Frameless: the page draws the title bar and the window controls.
             FormBorderStyle = FormBorderStyle.None;
             DoubleBuffered = true;
+
+            // Must run before the handle exists so the window is created at the
+            // remembered spot instead of jumping there after the first paint.
+            RestoreGeometry();
+
             HandleCreated += delegate(object o, EventArgs e)
             {
                 try
@@ -72,8 +94,12 @@ namespace Mdlight
             Load += OnLoaded;
             FormClosed += delegate(object o, FormClosedEventArgs e)
             {
+                try { if (geometryTimer != null) { geometryTimer.Stop(); geometryTimer.Dispose(); } }
+                catch (Exception) { }
                 try { web.Dispose(); } catch (Exception) { }
             };
+
+            HookGeometry();
         }
 
         private async void OnLoaded(object sender, EventArgs e)
@@ -185,6 +211,213 @@ namespace Mdlight
                     "mdlight", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Close();
             }
+        }
+
+        // ---- window geometry persistence --------------------------------------
+        // The window remembers size/position/maximized state in config.json.
+        // Everything read back is untrusted: a config written on a bigger monitor
+        // (or a corrupt one) must not produce a 0px or unreachable window.
+
+        /// <summary>Restore the last geometry, or fall back to 1200x860 centred.</summary>
+        private void RestoreGeometry()
+        {
+            bool restored = false;
+            try
+            {
+                double w = Config.GetNum("winWidth", double.NaN);
+                double h = Config.GetNum("winHeight", double.NaN);
+                double x = Config.GetNum("winX", double.NaN);
+                double y = Config.GetNum("winY", double.NaN);
+
+                if (!double.IsNaN(w) && !double.IsNaN(h) && !double.IsNaN(x) && !double.IsNaN(y))
+                {
+                    int iw = (int)Math.Round(w);
+                    int ih = (int)Math.Round(h);
+                    int ix = (int)Math.Round(x);
+                    int iy = (int)Math.Round(y);
+
+                    // Bound the size by the whole virtual desktop (all monitors),
+                    // not just the primary one, and keep coordinates well inside
+                    // what Windows can represent.
+                    Rectangle vs = SystemInformation.VirtualScreen;
+                    int maxW = vs.Width > 0 ? vs.Width : 16000;
+                    int maxH = vs.Height > 0 ? vs.Height : 16000;
+                    bool sane = iw >= MinWindowWidth && ih >= MinWindowHeight
+                             && iw <= maxW && ih <= maxH
+                             && Math.Abs(ix) <= 32000 && Math.Abs(iy) <= 32000;
+
+                    if (sane)
+                    {
+                        Rectangle r = new Rectangle(ix, iy, iw, ih);
+                        if (IsVisibleEnough(r))
+                        {
+                            ClientSize = new Size(iw, ih);
+                            StartPosition = FormStartPosition.Manual;
+                            Location = new Point(ix, iy);
+                            lastNormalBounds = r;
+                            lastGeometrySignature = GeometrySignature(r, false);
+                            restored = true;
+                            Util.Log("window geometry restored: " + GeometrySignature(r, false));
+                        }
+                        else
+                        {
+                            Util.Log("window geometry ignored (off-screen): " + GeometrySignature(r, false));
+                        }
+                    }
+                    else
+                    {
+                        Util.Log("window geometry ignored (out of range): "
+                            + iw + "x" + ih + " at " + ix + "," + iy);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Util.Log("window geometry restore error: " + ex.Message);
+            }
+
+            if (!restored)
+            {
+                ClientSize = new Size(DefaultWindowWidth, DefaultWindowHeight);
+                StartPosition = FormStartPosition.CenterScreen;
+                Util.Log("window geometry: using default "
+                    + DefaultWindowWidth + "x" + DefaultWindowHeight);
+            }
+
+            try
+            {
+                if (Config.GetBool("winMaximized", false))
+                {
+                    lastWasMaximized = true;
+                    WindowState = FormWindowState.Maximized;
+                }
+            }
+            catch (Exception ex) { Util.Log("window maximize restore error: " + ex.Message); }
+        }
+
+        /// <summary>
+        /// At least MinVisiblePx of the rectangle has to land inside some
+        /// monitor's working area. Screen coordinates are signed: monitors left
+        /// of / above the primary one have negative X or Y, so no absolute values.
+        /// </summary>
+        private static bool IsVisibleEnough(Rectangle r)
+        {
+            try
+            {
+                Screen[] screens = Screen.AllScreens;
+                for (int i = 0; i < screens.Length; i++)
+                {
+                    Rectangle hit = Rectangle.Intersect(r, screens[i].WorkingArea);
+                    if (hit.Width >= MinVisiblePx && hit.Height >= MinVisiblePx) return true;
+                }
+            }
+            catch (Exception ex) { Util.Log("screen probe error: " + ex.Message); }
+            return false;
+        }
+
+        private void HookGeometry()
+        {
+            geometryHooked = true;
+            geometryTimer = new Timer();
+            geometryTimer.Interval = GeometrySaveDelayMs;
+            geometryTimer.Tick += delegate(object o, EventArgs e)
+            {
+                geometryTimer.Stop();
+                SaveGeometry(false);
+            };
+            // Resize and Move fire many times while dragging; the timer collapses
+            // them into a single config write.
+            Resize += delegate(object o, EventArgs e) { OnGeometryChanged(); };
+            Move += delegate(object o, EventArgs e) { OnGeometryChanged(); };
+            // FormClosing (not FormClosed) so the final write still happens while
+            // Bounds/RestoreBounds are valid.
+            FormClosing += delegate(object o, FormClosingEventArgs e) { SaveGeometry(true); };
+        }
+
+        private void OnGeometryChanged()
+        {
+            try
+            {
+                if (WindowState == FormWindowState.Normal)
+                {
+                    lastNormalBounds = Bounds;
+                    lastWasMaximized = false;
+                }
+                else if (WindowState == FormWindowState.Maximized)
+                {
+                    lastWasMaximized = true;
+                }
+
+                if (geometryTimer == null) return;
+                // Saving while minimized would record the minimized icon rect.
+                if (WindowState == FormWindowState.Minimized) return;
+                geometryTimer.Stop();
+                geometryTimer.Start();
+            }
+            catch (Exception ex) { Util.Log("window geometry change error: " + ex.Message); }
+        }
+
+        private void SaveGeometry(bool closing)
+        {
+            if (!geometryHooked) return;
+            try
+            {
+                Rectangle r;
+                bool maximized;
+                if (WindowState == FormWindowState.Normal)
+                {
+                    r = Bounds;
+                    maximized = false;
+                }
+                else if (WindowState == FormWindowState.Maximized)
+                {
+                    // Keep the pre-maximize rect so un-maximizing after a relaunch
+                    // goes back to the real size, not the full screen.
+                    r = RestoreBounds;
+                    if (r.Width < MinWindowWidth || r.Height < MinWindowHeight)
+                        r = lastNormalBounds;
+                    maximized = true;
+                }
+                else
+                {
+                    r = lastNormalBounds;
+                    maximized = lastWasMaximized;
+                }
+
+                if (r.Width < MinWindowWidth || r.Height < MinWindowHeight)
+                {
+                    if (closing) Util.Log("window geometry not saved (degenerate): " + r);
+                    return;
+                }
+                if (!IsVisibleEnough(r))
+                {
+                    // Keep the previous good value rather than persisting garbage.
+                    if (closing) Util.Log("window geometry not saved (off-screen): " + r);
+                    return;
+                }
+
+                string sig = GeometrySignature(r, maximized);
+                if (sig == lastGeometrySignature) return;
+
+                Dictionary<string, object> patch = new Dictionary<string, object>();
+                patch["winWidth"] = r.Width;
+                patch["winHeight"] = r.Height;
+                patch["winX"] = r.X;
+                patch["winY"] = r.Y;
+                patch["winMaximized"] = maximized;
+                Config.Set(patch);
+                lastGeometrySignature = sig;
+                Util.Log("window geometry saved: " + sig);
+            }
+            catch (Exception ex)
+            {
+                Util.Log("window geometry save error: " + ex.Message);
+            }
+        }
+
+        private static string GeometrySignature(Rectangle r, bool maximized)
+        {
+            return r.Width + "x" + r.Height + "@" + r.X + "," + r.Y + (maximized ? "+max" : "");
         }
 
         // 📄 export: render the current page to PDF via WebView2's own print

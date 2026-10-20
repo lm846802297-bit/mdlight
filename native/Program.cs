@@ -529,7 +529,9 @@ private static readonly string MutexName = "Globalmdlight-single-" +
                 "  -h, --help        显示本帮助\n" +
                 "\n" +
                 "环境变量\n" +
-                "  MD_EDITOR         外部编辑器命令模板，含 {file} 与 {line}\n" +
+                "  MD_EDITOR         可选。外部编辑器命令模板，含 {file} 与 {line}；\n" +
+                "                    不设置时自动探测 code / Code.exe / sublime_text /\n" +
+                "                    notepad++ / notepad。\n" +
                 "                    例: MD_EDITOR=\"code --goto {file}:{line}\"\n" +
                 "\n" +
                 "这个 exe 是自足的：界面、KaTeX（含字体）、highlight.js、\n" +

@@ -25,11 +25,16 @@
 
   // ---- toast ----------------------------------------------------------------
   var toastTimer = null;
-  function toast(msg) {
+  // opts.duration: some messages (the editor failure report) are several lines
+  // and need reading time; opts.wide lets long text wrap instead of being
+  // clipped by the one-line toast style.
+  function toast(msg, opts) {
+    opts = typeof opts === 'number' ? { duration: opts } : (opts || {});
     toastEl.hidden = false;
     toastEl.textContent = msg;
+    toastEl.classList.toggle('is-wide', !!(opts.wide || String(msg).indexOf('\n') >= 0 || String(msg).length > 80));
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { toastEl.hidden = true; }, 2200);
+    toastTimer = setTimeout(function () { toastEl.hidden = true; }, opts.duration || 2200);
   }
 
   // ---- return-to-top floating button + empty state (UI polish) -----------------
@@ -79,11 +84,57 @@
   }
 
   // ---- TOC --------------------------------------------------------------------
+  // TOC section folding: a caret on every entry that has children hides that
+  // subtree (persisted, like the reference reader's collapsible outline).
+  var TOC_FOLD_KEY = 'mdl-toc-folded';
+  function tocRows() {
+    return Array.prototype.slice.call(tocEl.querySelectorAll('.mdl-toc-node'));
+  }
+  function applyTocFolds(rows) {
+    var folds = []; // levels of the currently folded ancestors
+    (rows || tocRows()).forEach(function (row) {
+      var lv = Number(row.dataset.level);
+      while (folds.length && lv <= folds[folds.length - 1]) folds.pop();
+      row.classList.toggle('is-toc-hidden', folds.length > 0);
+      if (!folds.length && row.querySelector('.mdl-toc-caret.is-folded')) folds.push(lv);
+    });
+  }
+  function toggleTocFold(anchor) {
+    var arr = lsJson(TOC_FOLD_KEY, []);
+    var i = arr.indexOf(anchor);
+    if (i >= 0) arr.splice(i, 1); else arr.push(anchor);
+    lsSet(TOC_FOLD_KEY, arr);
+    tocRows().forEach(function (row) {
+      var c = row.querySelector('.mdl-toc-caret');
+      if (c && !c.classList.contains('is-leaf')) c.classList.toggle('is-folded', arr.indexOf(row.dataset.anchor) >= 0);
+    });
+    applyTocFolds();
+  }
   function buildToc() {
     var inner = tocEl.querySelector('.mdl-toc-inner');
     if (!inner) return;
     inner.innerHTML = '';
-    (S.toc || []).forEach(function (h) {
+    var list = S.toc || [];
+    var folded = lsJson(TOC_FOLD_KEY, []);
+    list.forEach(function (h, i) {
+      var row = document.createElement('div');
+      row.className = 'mdl-toc-node';
+      row.dataset.level = String(h.level);
+      row.dataset.anchor = h.anchor;
+      var hasKids = !!(list[i + 1] && list[i + 1].level > h.level);
+      var care = document.createElement(hasKids ? 'button' : 'span');
+      care.className = 'mdl-toc-caret' + (hasKids ? '' : ' is-leaf') + (folded.indexOf(h.anchor) >= 0 ? ' is-folded' : '');
+      if (hasKids) {
+        care.type = 'button';
+        care.textContent = '\u25be';
+        care.title = t('toc-fold', '折叠 / 展开这一节');
+        care.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleTocFold(h.anchor);
+        });
+      }
+      row.appendChild(care);
       var a = document.createElement('a');
       a.className = 'mdl-toc-item mdl-toc-l' + h.level;
       a.href = '#' + h.anchor;
@@ -95,9 +146,11 @@
         if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
         markActive(a);
       });
-      inner.appendChild(a);
+      row.appendChild(a);
+      inner.appendChild(row);
     });
-    if (!(S.toc || []).length) inner.innerHTML = '<div class="mdl-toc-empty">' + t('toc-empty', '(无标题)') + '</div>';
+    if (!list.length) inner.innerHTML = '<div class="mdl-toc-empty">' + t('toc-empty', '(无标题)') + '</div>';
+    else applyTocFolds();
   }
   var tocLinks = [];
   function markActive(a) {
@@ -118,6 +171,184 @@
       });
     }, { rootMargin: '0% 0% -70% 0px' });
     heads.forEach(function (h) { io.observe(h); });
+  }
+
+  // ---- TOC panel: 目录 / 历史 / 收藏 -------------------------------------------
+  // The reference reader keeps three permanent tabs in its left panel and
+  // remembers what you opened before; mdlight only ever had a 目录 list, which is
+  // one of the "why does this feel worse" gaps. History/favourites live in
+  // localStorage (the native host keeps no library of its own).
+  var PANE_KEY = 'mdl-toc-pane';
+  var HIST_KEY = 'mdl-history-v1';
+  var FAV_KEY = 'mdl-favorites-v1';
+  var HISTORY_MAX = 300;
+  function lsJson(key, dflt) {
+    try { var v = JSON.parse(localStorage.getItem(key) || ''); return Array.isArray(v) ? v : dflt; }
+    catch (e) { return dflt; }
+  }
+  function lsSet(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) { } }
+  function docKey() { return S.filepath || S.name || ''; }
+  function baseName(p) { return String(p || '').split(/[\\/]/).pop() || String(p || ''); }
+  function dayKey(ts) { var d = new Date(ts); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
+  function dayLabel(ts) {
+    var d = new Date(ts), n = new Date();
+    if (d.toDateString() === n.toDateString()) return t('day-today', '今天');
+    var y = new Date(n.getTime() - 86400000);
+    if (d.toDateString() === y.toDateString()) return t('day-yesterday', '昨天');
+    return (d.getMonth() + 1) + t('day-md', '月') + d.getDate() + t('day-dd', '日');
+  }
+  function openDocPath(path, name) {
+    var isNative = !!(window.chrome && window.chrome.webview);
+    if (!isNative) { toast(t('pane-static-only', '仅应用版可切换文档')); return; }
+    if (path === docKey()) return;
+    openTab(path, name || baseName(path), null);
+    fetch('/api/open-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path })
+    }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok) location.reload();
+        else toast(t('open-failed', '无法打开文件：') + (name || path));
+      })
+      .catch(function () { toast(t('open-failed', '无法打开文件：') + (name || path)); });
+  }
+  function tocRow(path, name, isCurrent, onRemove, removeTitle) {
+    var row = document.createElement('div');
+    row.className = 'mdl-toc-row' + (isCurrent ? ' is-current' : '');
+    row.title = path;
+    var nm = document.createElement('span');
+    nm.className = 'mdl-toc-row-name';
+    nm.textContent = name;
+    row.appendChild(nm);
+    if (onRemove) {
+      var x = document.createElement('span');
+      x.className = 'mdl-toc-row-x';
+      x.textContent = '\u00d7';
+      x.title = removeTitle || '';
+      x.addEventListener('click', function (e) { e.stopPropagation(); onRemove(); });
+      row.appendChild(x);
+    }
+    row.addEventListener('click', function () { openDocPath(path, name); });
+    return row;
+  }
+  function historyList() { return lsJson(HIST_KEY, []); }
+  function recordHistory() {
+    var p = docKey();
+    if (!p) return;
+    var list = historyList().filter(function (it) { return it.path !== p; });
+    list.unshift({ path: p, name: S.name || baseName(p), at: Date.now() });
+    if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
+    lsSet(HIST_KEY, list);
+  }
+  function clearHistoryItem(path) {
+    lsSet(HIST_KEY, historyList().filter(function (it) { return it.path !== path; }));
+    renderHistory();
+  }
+  function clearHistoryDay(day) {
+    lsSet(HIST_KEY, historyList().filter(function (it) { return dayKey(it.at) !== day; }));
+    renderHistory();
+  }
+  function renderHistory() {
+    var pane = document.getElementById('mdl-pane-history');
+    if (!pane) return;
+    var list = historyList();
+    pane.innerHTML = '';
+    if (!list.length) {
+      pane.innerHTML = '<div class="mdl-toc-hint">' + t('history-empty', '(暂无历史)') + '</div>';
+      return;
+    }
+    var cur = docKey(), lastDay = '';
+    list.forEach(function (it) {
+      var day = dayKey(it.at);
+      if (day !== lastDay) {
+        lastDay = day;
+        var hd = document.createElement('div');
+        hd.className = 'mdl-toc-day';
+        var sp = document.createElement('span');
+        sp.textContent = dayLabel(it.at);
+        var dx = document.createElement('span');
+        dx.className = 'mdl-toc-day-x';
+        dx.textContent = '\u00d7';
+        dx.title = t('history-clear-day', '清空当天');
+        dx.addEventListener('click', function (e) { e.stopPropagation(); clearHistoryDay(day); });
+        hd.appendChild(sp); hd.appendChild(dx);
+        pane.appendChild(hd);
+      }
+      pane.appendChild(tocRow(it.path, it.name || baseName(it.path), it.path === cur,
+        function () { clearHistoryItem(it.path); }, t('history-remove', '从历史中移除')));
+    });
+  }
+  function favoritesList() { return lsJson(FAV_KEY, []); }
+  function isFavorite(p) {
+    return favoritesList().some(function (it) { return it.path === p; });
+  }
+  function toggleFavorite() {
+    var p = docKey();
+    if (!p) return;
+    var list = favoritesList();
+    if (isFavorite(p)) {
+      lsSet(FAV_KEY, list.filter(function (it) { return it.path !== p; }));
+      toast(t('fav-removed', '已取消收藏'));
+    } else {
+      list.unshift({ path: p, name: S.name || baseName(p), at: Date.now() });
+      lsSet(FAV_KEY, list);
+      toast(t('fav-added', '已收藏：') + (S.name || baseName(p)));
+    }
+    renderFavorites();
+  }
+  function renderFavorites() {
+    var pane = document.getElementById('mdl-pane-favorites');
+    if (!pane) return;
+    var list = favoritesList();
+    pane.innerHTML = '';
+    var add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'mdl-btn mdl-toc-fav-add';
+    var cur = docKey();
+    add.textContent = isFavorite(cur) ? t('fav-remove', '取消收藏当前文档') : t('fav-add', '收藏当前文档');
+    add.addEventListener('click', toggleFavorite);
+    pane.appendChild(add);
+    if (!list.length) {
+      var hint = document.createElement('div');
+      hint.className = 'mdl-toc-hint';
+      hint.textContent = t('fav-empty', '(暂无收藏)');
+      pane.appendChild(hint);
+      return;
+    }
+    list.forEach(function (it) {
+      pane.appendChild(tocRow(it.path, it.name || baseName(it.path), it.path === cur,
+        function () {
+          lsSet(FAV_KEY, favoritesList().filter(function (f) { return f.path !== it.path; }));
+          toast(t('fav-removed', '已取消收藏'));
+          renderFavorites();
+        }, t('fav-remove', '取消收藏')));
+    });
+  }
+  function showPane(name) {
+    var tabs = document.querySelectorAll('#mdl-toc-tabs .mdl-toc-tab');
+    for (var i = 0; i < tabs.length; i++)
+      tabs[i].classList.toggle('is-active', tabs[i].getAttribute('data-pane') === name);
+    ['toc', 'history', 'favorites'].forEach(function (p) {
+      var el = document.getElementById('mdl-pane-' + p);
+      if (el) el.hidden = (p !== name);
+    });
+    try { localStorage.setItem(PANE_KEY, name); } catch (e) { }
+    if (name === 'history') renderHistory();
+    else if (name === 'favorites') renderFavorites();
+  }
+  function wireTocPane() {
+    var tabs = document.querySelectorAll('#mdl-toc-tabs .mdl-toc-tab');
+    for (var i = 0; i < tabs.length; i++) {
+      (function (btn) {
+        btn.addEventListener('click', function () { showPane(btn.getAttribute('data-pane')); });
+      })(tabs[i]);
+    }
+    var saved = 'toc';
+    try { saved = localStorage.getItem(PANE_KEY) || 'toc'; } catch (e) { }
+    if (['toc', 'history', 'favorites'].indexOf(saved) < 0) saved = 'toc';
+    showPane(saved);
+    recordHistory();
   }
 
   // ---- theme / skin ---------------------------------------------------------
@@ -162,7 +393,10 @@
     ['JetBrains Mono', 'JetBrains Mono（等宽）', 'JetBrains Mono (mono)']
   ];
   function fontLabel(f) { return (I18N && I18N.lang() === 'en-US') ? f[2] : f[1]; }
-  var FONT_MIN = 12, FONT_MAX = 28;
+  // Keep this range identical to the native settings dialog's NumericUpDown
+  // (native/Settings.cs): it used to allow 10-40 while this file clamped to
+  // 12-28, so a size chosen in the dialog was silently rewritten on reload.
+  var FONT_MIN = 10, FONT_MAX = 40;
   var themeIdx = 0;
   try {
     themeIdx = THEMES.indexOf(localStorage.getItem('mdl-theme')) || 0;
@@ -204,6 +438,7 @@
   // key 是稳定的符号，存进 config.json 与 localStorage；px 只是渲染值，
   // 0 表示不设上限（占满可用宽度）。CSS 变量 --mdl-content-max 由 .mdl-content 使用。
   var WIDTHS = [
+    ['auto', null, '自适应', 'Auto'],
     ['narrow', 700, '窄', 'Narrow'],
     ['normal', 860, '标准', 'Standard'],
     ['wide', 1100, '宽', 'Wide'],
@@ -214,9 +449,19 @@
     return null;
   }
   function widthLabel(w) { return (I18N && I18N.lang() === 'en-US') ? w[3] : w[2]; }
+  // '自适应' tracks the window: the reference viewer sizes the column from the
+  // viewport instead of pinning it to a constant, which is what makes a wide
+  // monitor feel used rather than wasted.
+  function autoWidthPx() {
+    var tocW = (tocEl && !tocEl.classList.contains('is-hidden')) ? 260 : 0;
+    var avail = Math.max(520, window.innerWidth - tocW - 64);
+    return Math.round(Math.max(760, Math.min(1400, avail * 0.85)));
+  }
   function applyContentWidth(key) {
-    var w = widthEntry(key) || WIDTHS[1];
-    document.documentElement.style.setProperty('--mdl-content-max', w[1] ? w[1] + 'px' : 'none');
+    var w = widthEntry(key) || widthEntry('normal');
+    var px = w[1];
+    if (w[0] === 'auto') px = autoWidthPx();
+    document.documentElement.style.setProperty('--mdl-content-max', px ? px + 'px' : 'none');
     try { localStorage.setItem('mdl-content-width', w[0]); } catch (e) {}
     return w[0];
   }
@@ -229,13 +474,63 @@
   }
   function currentWidthKey() {
     if (S.cfg && widthEntry(String(S.cfg.contentWidth))) return String(S.cfg.contentWidth);
+    try { var ls = localStorage.getItem('mdl-content-width'); if (ls && widthEntry(ls)) return ls; } catch (e) {}
     var css = getComputedStyle(document.documentElement).getPropertyValue('--mdl-content-max').trim();
     for (var i = 0; i < WIDTHS.length; i++) {
+      if (WIDTHS[i][0] === 'auto') continue; // its px value is dynamic
       var want = WIDTHS[i][1] ? WIDTHS[i][1] + 'px' : 'none';
       if (css === want) return WIDTHS[i][0];
     }
-    try { return localStorage.getItem('mdl-content-width') || 'normal'; } catch (e) { return 'normal'; }
+    return 'normal';
   }
+  // A transient capsule at the bottom edge echoing the new value — without it a
+  // keyboard/wheel zoom gives no feedback at all.
+  var zoomChip = null, zoomChipTimer = 0;
+  function showZoomChip(text) {
+    if (!zoomChip) {
+      zoomChip = document.createElement('div');
+      zoomChip.id = 'mdl-zoom-chip';
+      zoomChip.className = 'mdl-zoom-chip';
+      document.body.appendChild(zoomChip);
+    }
+    zoomChip.textContent = text;
+    zoomChip.classList.add('is-on');
+    if (zoomChipTimer) clearTimeout(zoomChipTimer);
+    zoomChipTimer = setTimeout(function () { zoomChip.classList.remove('is-on'); }, 1200);
+  }
+  function fontPercent() { return Math.round(currentFontSize() / 15.5 * 100); }
+  function zoomStep(d) {
+    setFontSize(currentFontSize() + d);
+    showZoomChip(t('zoom-font', '字号') + ' ' + fontPercent() + '%');
+  }
+  function widthStep(d) {
+    var order = ['narrow', 'normal', 'wide', 'full'];
+    var i = order.indexOf(currentWidthKey());
+    if (i < 0) i = 1; // 'auto' has no slot in the cycle
+    i = Math.max(0, Math.min(order.length - 1, i + d));
+    setContentWidth(order[i]);
+    var w = widthEntry(order[i]);
+    showZoomChip(t('zoom-width', '栏宽') + ' ' + (w[1] ? w[1] + 'px' : widthLabel(w)));
+  }
+  // keep '自适应' in step with the window
+  var widthResizeTimer = 0;
+  window.addEventListener('resize', function () {
+    if (widthResizeTimer) clearTimeout(widthResizeTimer);
+    widthResizeTimer = setTimeout(function () {
+      if (currentWidthKey() === 'auto') applyContentWidth('auto');
+    }, 150);
+  });
+  // Ctrl+wheel = text size, Alt+wheel = column width. Same gestures as the
+  // reference reader; before this the only way to resize was the toolbar.
+  window.addEventListener('wheel', function (e) {
+    if (!(e.ctrlKey || e.metaKey) && !e.altKey) return;
+    var tgt = e.target;
+    if (tgt && tgt.closest && tgt.closest('.mdl-toc, .mdl-mindmap, .mdl-mm-full, #mdl-editor, .mdl-sc-panel, .mdl-marp')) return;
+    e.preventDefault();
+    var up = e.deltaY < 0;
+    if (e.altKey) widthStep(up ? 1 : -1);
+    else zoomStep(up ? 1 : -1);
+  }, { passive: false });
   function renderWidthSelect(container) {
     var sel = container || document.getElementById('mdl-width-select');
     if (!sel) return;
@@ -244,7 +539,7 @@
     WIDTHS.forEach(function (w) {
       var o = document.createElement('option');
       o.value = w[0];
-      o.textContent = widthLabel(w) + (w[1] ? '（' + w[1] + 'px）' : '');
+      o.textContent = widthLabel(w) + (w[1] ? '（' + w[1] + 'px）' : (w[0] === 'auto' ? '（' + autoWidthPx() + 'px）' : ''));
       if (w[0] === cur) o.selected = true;
       sel.appendChild(o);
     });
@@ -475,9 +770,15 @@
   // blank box (the original viewer's flaw #2 pattern).
   function mmRenderOne(mod, el, i) {
     var srcEl = el.querySelector('.mdl-mermaid-src');
-    var text = srcEl ? srcEl.textContent : el.textContent;
-    // keep the original text so a theme change can re-render from source
-    el.setAttribute('data-mm-src', text);
+    // Read the source from the .mdl-mermaid-src block when there is one, else
+    // from the attribute. Never overwrite an existing data-mm-src with the
+    // element's *rendered* text — a theme change re-renders from that attribute
+    // and would then feed SVG back into the engine.
+    var text;
+    if (srcEl) text = srcEl.textContent;
+    else text = el.getAttribute('data-mm-src');
+    if (text == null) text = el.textContent;
+    if (srcEl) el.setAttribute('data-mm-src', text);
     var id = 'mdl-mm-' + i;
     var theme = mermaidTheme();
     var ckey = mmHash(text, theme);
@@ -588,7 +889,8 @@
       '  .pdf-page > * { orphans: 3; widows: 3; }',
       '  h1, h2, h3, h4, h5, h6 { break-after: avoid; page-break-after: avoid; }',
       '  pre, code, table, figure, .mdl-diagram, .mdl-callout { break-inside: avoid; page-break-inside: avoid; }',
-      '  .mdl-folded { display: none; }',
+      // folded sections are un-folded for the print (see unfoldForPrint), so no
+      // .mdl-folded rule here: it would hide the heading itself.
       '  #mdl-toc, .mdl-toolbar, .mdl-find-bar, .mdl-sc-panel, #mdl-editor, .mdl-tab-bar { display: none !important; }',
       '}'
     );
@@ -653,12 +955,39 @@
   }
 
   // ---- print ------------------------------------------------------------------
-  var printBtn = document.getElementById('mdl-btn-print');
-  if (printBtn) printBtn.addEventListener('click', function () {
+  // One shared entry point so ⎙, Ctrl+P and "export PDF" all produce the same
+  // paginated layout (the key used to be unbound, so Ctrl+P fell through to the
+  // browser's own print and silently skipped the @page header/footer macros).
+  var foldedForPrint = null;
+  function unfoldForPrint() {
+    // Folded sections are hidden with inline display:none on the siblings; a
+    // @media print rule cannot override an inline style, so undo them for the
+    // duration of the print and put them back in afterprint.
+    var hidden = contentEl.querySelectorAll('[data-mdl-fold-hidden="1"]');
+    if (!hidden.length) { foldedForPrint = null; return; }
+    foldedForPrint = [];
+    for (var i = 0; i < hidden.length; i++) {
+      foldedForPrint.push(hidden[i]);
+      hidden[i].setAttribute('data-mdl-fold-hidden', '0');
+      hidden[i].style.display = '';
+    }
+  }
+  function refoldAfterPrint() {
+    if (!foldedForPrint) return;
+    for (var i = 0; i < foldedForPrint.length; i++) {
+      foldedForPrint[i].setAttribute('data-mdl-fold-hidden', '1');
+      foldedForPrint[i].style.display = 'none';
+    }
+    foldedForPrint = null;
+  }
+  function printDoc() {
+    unfoldForPrint();
     applyPdfMacros();
     // Let the paginated layout paint before the print dialog locks the DOM.
     setTimeout(function () { window.print(); }, 80);
-  });
+  }
+  var printBtn = document.getElementById('mdl-btn-print');
+  if (printBtn) printBtn.addEventListener('click', printDoc);
   // Undo pagination after printing so the on-screen view returns to normal flow.
   window.addEventListener('afterprint', function () {
     var content = document.getElementById('mdl-content');
@@ -671,6 +1000,7 @@
       var st = document.getElementById('mdl-pdf-macros');
       if (st) st.remove();
     }
+    refoldAfterPrint();
   });
 
   // ---- 📊 export CSV (parity feature) -----------------------------------------
@@ -1018,7 +1348,16 @@
     fetch('/api/open-editor?line=' + line)
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        toast(j.ok ? tf('editor-opened', '已在编辑器打开 (第 {n} 行{via})', { n: line, via: j.via ? ', ' + j.via : '' }) : t('editor-not-found', '未找到编辑器，请设置 MD_EDITOR'));
+        if (j.ok) {
+          toast(tf('editor-opened', '已在编辑器打开 (第 {n} 行{via})', { n: line, via: j.via ? ', ' + j.via : '' }));
+          return;
+        }
+        // The native host now returns a readable, multi-line "why" plus a hint
+        // (which editors were tried, how to set MD_EDITOR). Showing the generic
+        // string instead would throw that diagnosis away.
+        var msg = j.error || t('editor-not-found', '未找到编辑器，请设置 MD_EDITOR');
+        if (j.hint && msg.indexOf(j.hint) < 0) msg += '\n' + j.hint;
+        toast(msg, 6000);
       })
       .catch(function () { toast(t('no-service','无法联系 mdlight 服务')); });
   }
@@ -1030,7 +1369,7 @@
   // saves straight into %APPDATA%\mdlight\config.json and the host broadcasts a
   // reload; once the fetch resolves, refresh so the new font/theme/... apply.
   var settingsBtn = document.getElementById('mdl-btn-settings');
-  if (settingsBtn) settingsBtn.addEventListener('click', function () {
+  function openSettingsWindow() {
     fetch('/api/settings', { method: 'POST', body: '{}' })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .then(function (j) {
@@ -1040,7 +1379,8 @@
         toast((j && j.error) || t('no-service', '无法联系 mdlight 服务'));
       })
       .catch(function () { toast(t('no-service', '无法联系 mdlight 服务')); });
-  });
+  }
+  if (settingsBtn) settingsBtn.addEventListener('click', openSettingsWindow);
 
   // ---- self-update + .md binding (native host only) --------------------------
   // /api/update-check resolves on the native exe; on the Node server the route
@@ -1343,6 +1683,7 @@
   var findCount = document.getElementById('mdl-find-count');
   var findHits = [];
   var findIdx = -1;
+  var findQuery = ''; // the query the current findHits were produced from
   function clearFindMarks() {
     findHits.forEach(function (h) {
       var p = h.parentNode;
@@ -1362,7 +1703,7 @@
     if (sel && sel.trim()) { findInput.value = sel.slice(0, 200); }
     findInput.focus();
     findInput.select();
-    if (findInput.value) doFind();
+    if (findInput.value) { findQuery = findInput.value; doFind(); }
   }
   function closeFind() {
     if (!findBar) return;
@@ -1420,19 +1761,45 @@
     findHits.forEach(function (h, k) { h.classList.toggle('mdl-find-hit--active', k === findIdx); });
     if (findCount) findCount.textContent = (findIdx + 1) + '/' + findHits.length;
     var h = findHits[findIdx];
+    // Leave the viewport alone when the hit is already comfortably visible —
+    // re-centering on every Enter makes the page twitch.
+    var r = h.getBoundingClientRect();
+    if (r.top >= 76 && r.bottom <= window.innerHeight - 32) return;
     try { h.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { h.scrollIntoView(); }
   }
   if (findBar && findInput) {
-    findInput.addEventListener('input', doFind);
+    var findComposing = false;
+    // Searching used to run on every keystroke: each character cleared the
+    // marks, walked the whole tree and pulled the viewport back to hit #1, so
+    // typing in a long document felt sticky. Instead the walk happens on
+    // Enter / blur, and Enter then walks forward from the current hit.
+    function findRun(step) {
+      var q = findInput.value;
+      if (!q) { clearFindMarks(); findQuery = ''; if (findCount) findCount.textContent = ''; return; }
+      if (q !== findQuery) { findQuery = q; doFind(); return; }
+      gotoHit(findIdx + step);
+    }
+    findInput.addEventListener('compositionstart', function () { findComposing = true; });
+    findInput.addEventListener('compositionend', function () { findComposing = false; });
+    findInput.addEventListener('input', function () {
+      // no DOM walk here — just drop the stale counter
+      if (findInput.value !== findQuery && findCount) findCount.textContent = '';
+    });
     findInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); gotoHit(findIdx + 1); }
+      if (e.isComposing || findComposing) return; // IME: Enter commits the text
+      if (e.key === 'Enter') { e.preventDefault(); findRun(e.shiftKey ? -1 : 1); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); findRun(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); findRun(-1); }
       else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+    });
+    findInput.addEventListener('blur', function () {
+      if (findInput.value && findInput.value !== findQuery) { findQuery = findInput.value; doFind(); }
     });
     var fp = document.getElementById('mdl-find-prev');
     var fn = document.getElementById('mdl-find-next');
     var fc = document.getElementById('mdl-find-close');
-    if (fp) fp.addEventListener('click', function () { gotoHit(findIdx - 1); });
-    if (fn) fn.addEventListener('click', function () { gotoHit(findIdx + 1); });
+    if (fp) fp.addEventListener('click', function () { findRun(-1); });
+    if (fn) fn.addEventListener('click', function () { findRun(1); });
     if (fc) fc.addEventListener('click', closeFind);
   }
 
@@ -1450,7 +1817,43 @@
     'marp': 'f5',
     'editor': 'f2',
     'source': 'ctrl+e',
+    'print': 'ctrl+p',
+    'settings': 'ctrl+,',
+    'open': 'ctrl+o',
+    'zoom-in': 'ctrl+up',
+    'zoom-out': 'ctrl+down',
+    'zoom-reset': 'ctrl+0',
+    'width-up': 'alt+up',
+    'width-down': 'alt+down',
+    'width-auto': 'alt+0',
   };
+  // Human labels for the panel (the panel used to print the raw action id, so
+  // reading it meant knowing the internal key names).
+  var SC_LABELS = {
+    'toc': ['目录', 'Contents'],
+    'theme': ['主题', 'Theme'],
+    'find': ['页面内查找', 'Find in page'],
+    'wysiwyg': ['直接编辑', 'Live edit'],
+    'mindmap': ['大纲脑图', 'Mind map'],
+    'dual': ['双栏分屏', 'Split view'],
+    'marp': ['放映', 'Present'],
+    'editor': ['外部编辑器', 'External editor'],
+    'source': ['源码视图', 'Source view'],
+    'print': ['打印 / 导出 PDF', 'Print / PDF'],
+    'settings': ['设置', 'Settings'],
+    'open': ['打开文件', 'Open file'],
+    'zoom-in': ['放大字号', 'Larger text'],
+    'zoom-out': ['缩小字号', 'Smaller text'],
+    'zoom-reset': ['字号复位', 'Reset text size'],
+    'width-up': ['加宽正文', 'Wider column'],
+    'width-down': ['变窄正文', 'Narrower column'],
+    'width-auto': ['行宽自适应', 'Auto column width'],
+  };
+  function scLabel(a) {
+    var pair = SC_LABELS[a];
+    if (!pair) return a;
+    return (I18N && I18N.lang() === 'en-US') ? pair[1] : pair[0];
+  }
   var SC_KEY = 'mdl-shortcuts';
   function shortcuts() {
     var user = {};
@@ -1471,20 +1874,28 @@
     });
     return { mods: mods, key: key };
   }
+  // Normalise a key name so 'ctrl+up' and ArrowUp are the same binding.
+  function normKey(k) {
+    k = String(k || '').toLowerCase();
+    if (k === 'arrowup' || k === 'up') return 'up';
+    if (k === 'arrowdown' || k === 'down') return 'down';
+    if (k === 'arrowleft' || k === 'left') return 'left';
+    if (k === 'arrowright' || k === 'right') return 'right';
+    if (k === 'space' || k === 'spacebar') return ' ';
+    return k;
+  }
   function matchesSc(e, sh) {
     var p = parseSc(sh);
     if (!p.key) return false;
-    var ok = p.key;
-    if (p.key !== 'f1' && p.key !== 'f2' && p.key !== 'f3' && p.key !== 'f5' && p.key !== 'escape') {
-      ok = (e.key || '').toLowerCase();
-    } else {
-      ok = (e.key || '').toLowerCase();
-    }
-    if (ok !== p.key) return false;
+    if (normKey(e.key) !== normKey(p.key)) return false;
     if (p.mods.ctrl && !(e.ctrlKey || e.metaKey)) return false;
     if (p.mods.shift && !e.shiftKey) return false;
     if (p.mods.alt && !e.altKey) return false;
     if (!p.mods.ctrl && e.ctrlKey && !e.metaKey) return false;
+    // An extra modifier must NOT match: without this, Ctrl+Shift+X also fired
+    // the Ctrl+X binding, so unrelated chords collided with real shortcuts.
+    if (!p.mods.shift && e.shiftKey) return false;
+    if (!p.mods.alt && e.altKey) return false;
     return true;
   }
   function runShortcutAction(a) {
@@ -1498,29 +1909,124 @@
       case 'marp': if (marpState.slides && marpState.slides.length) enterMarp(); break;
       case 'editor': openEditor(); break;
       case 'source': if (editorOpen) closeSourceEditor(); else openSourceEditor(); break;
+      case 'print': printDoc(); break;
+      case 'settings': openSettingsWindow(); break;
+      case 'open': pickOpenFile(); break;
+      case 'zoom-in': zoomStep(1); break;
+      case 'zoom-out': zoomStep(-1); break;
+      case 'zoom-reset': setFontSize(15.5); break;
+      case 'width-up': widthStep(1); break;
+      case 'width-down': widthStep(-1); break;
+      case 'width-auto': setContentWidth('auto'); break;
     }
   }
   // Cmd/Ctrl+K: show the shortcut panel listing every mapping.
   var scPanel = null;
+  var scRows = null;
+  // ---- rebinding (the panel used to be read-only) ---------------------------
+  // Only the *differences* from SHORTCUT_DEFAULTS are persisted, so a later
+  // release can still improve a default the user never touched.
+  var scRecording = null;
+  function scStore(map) {
+    var store = {};
+    Object.keys(map).forEach(function (a) {
+      if (map[a] !== SHORTCUT_DEFAULTS[a]) store[a] = map[a];
+    });
+    try { localStorage.setItem(SC_KEY, JSON.stringify(store)); } catch (e) {}
+    if (S.cfg) S.cfg.shortcuts = store;
+    postConfig({ shortcuts: store });
+    return store;
+  }
+  function scStopRecord() {
+    scRecording = null;
+    renderScRows();
+  }
+  function scBeginRecord(action) {
+    scRecording = action;
+    renderScRows();
+    toast(t('sc-record-hint', '按下新的快捷键，Esc 取消'));
+  }
+  document.addEventListener('keydown', function (e) {
+    if (!scRecording) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') { scStopRecord(); return; }
+    var k = normKey(e.key);
+    // a bare modifier is not a chord: keep waiting for the real key
+    if (k === 'control' || k === 'shift' || k === 'alt' || k === 'meta') return;
+    var parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push('ctrl');
+    if (e.shiftKey) parts.push('shift');
+    if (e.altKey) parts.push('alt');
+    parts.push(k);
+    var chord = parts.join('+');
+    var cur = shortcuts();
+    var next = Object.assign({}, cur);
+    var stolen = null;
+    Object.keys(cur).forEach(function (a) {
+      if (a !== scRecording && cur[a] === chord) {
+        // give the chord to the action being recorded and put the previous
+        // owner back on its default instead of leaving it silently dead
+        next[a] = SHORTCUT_DEFAULTS[a] || '';
+        stolen = a;
+      }
+    });
+    next[scRecording] = chord;
+    scStore(next);
+    var done = scRecording;
+    scRecording = null;
+    renderScRows();
+    toast(stolen
+      ? tf('sc-rebind-stolen', '{a} 改为 {k}（{b} 已恢复默认）', { a: scLabel(done), k: prettySc(chord), b: scLabel(stolen) })
+      : tf('sc-rebind-done', '{a} 已改为 {k}', { a: scLabel(done), k: prettySc(chord) }));
+  }, true);
+  function renderScRows() {
+    if (!scRows) return;
+    scRows.innerHTML = '';
+    var map = shortcuts();
+    Object.keys(map).forEach(function (action) {
+      var row = document.createElement('div');
+      row.className = 'mdl-sc-row' + (scRecording === action ? ' is-recording' : '');
+      var lbl = document.createElement('span');
+      lbl.className = 'mdl-sc-lbl';
+      lbl.textContent = scLabel(action); // was the raw action id
+      var val = document.createElement('button');
+      val.type = 'button';
+      val.className = 'mdl-sc-val';
+      val.textContent = scRecording === action ? t('sc-record-wait', '按下按键…') : prettySc(map[action]);
+      val.title = t('sc-rebind-hint', '点击修改这个快捷键');
+      val.addEventListener('click', function () { scBeginRecord(action); });
+      row.appendChild(lbl); row.appendChild(val);
+      scRows.appendChild(row);
+    });
+  }
+  function prettySc(sh) {
+    return String(sh || '').split('+').map(function (p) {
+      if (p === 'ctrl' || p === 'cmd') return 'Ctrl';
+      if (p === 'shift') return 'Shift';
+      if (p === 'alt') return 'Alt';
+      if (p === 'up') return '↑';
+      if (p === 'down') return '↓';
+      if (p === 'left') return '←';
+      if (p === 'right') return '→';
+      if (p === ',') return ',';
+      return p.toUpperCase();
+    }).join(' + ');
+  }
   function buildScPanel() {
     if (scPanel) return scPanel;
     scPanel = document.createElement('div');
     scPanel.id = 'mdl-sc-panel';
     scPanel.className = 'mdl-sc-panel';
     scPanel.hidden = true;
-    var map = shortcuts();
-    Object.keys(map).forEach(function (action) {
-      var row = document.createElement('div');
-      row.className = 'mdl-sc-row';
-      var lbl = document.createElement('span');
-      lbl.className = 'mdl-sc-lbl';
-      lbl.textContent = action;
-      var val = document.createElement('span');
-      val.className = 'mdl-sc-val';
-      val.textContent = map[action];
-      row.appendChild(lbl); row.appendChild(val);
-      scPanel.appendChild(row);
-    });
+    var hd = document.createElement('div');
+    hd.className = 'mdl-sc-hd';
+    hd.textContent = t('sc-title', '快捷键');
+    scPanel.appendChild(hd);
+    scRows = document.createElement('div');
+    scRows.className = 'mdl-sc-rows';
+    scPanel.appendChild(scRows);
+    renderScRows();
     var btns = document.createElement('div');
     btns.className = 'mdl-sc-btns';
     var reset = document.createElement('button');
@@ -1531,7 +2037,8 @@
       try { localStorage.removeItem(SC_KEY); } catch (e) {}
       // also clear any config-level overrides the host persisted
       postConfig({ shortcuts: null });
-      buildScPanel(true);
+      if (S.cfg) S.cfg.shortcuts = null;
+      renderScRows(); // rebuild in place: the old code returned the cached node
       toast(t('sc-reset-done', '已恢复默认快捷键'));
     });
     var close = document.createElement('button');
@@ -1589,10 +2096,15 @@
     }
     if (editorOpen && e.key === 'Escape') { e.preventDefault(); closeSourceEditor(); return; }
     else if (e.key === 'Escape') {
+      // Esc peels the topmost layer first; the shortcut panel was missing from
+      // this chain, so Ctrl+K could only be undone with Ctrl+K or the button.
+      if (mmFull && !mmFull.hidden) { e.preventDefault(); closeMmFull(); return; }
+      if (scPanel && !scPanel.hidden) { e.preventDefault(); closeScPanel(); return; }
       var aPop = document.getElementById('mdl-appear-pop');
       if (aPop && !aPop.hidden) { e.preventDefault(); aPop.hidden = true; return; }
       if (mm.open) { e.preventDefault(); closeMindmap(); }
       else if (findBar && !findBar.hidden) { e.preventDefault(); closeFind(); }
+      else if (editorOpen) { e.preventDefault(); closeSourceEditor(); return; }
       else if (!tocEl.classList.contains('is-hidden')) toggleToc();
     }
     else if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(); }
@@ -1605,7 +2117,8 @@
     else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'm') { e.preventDefault(); mm.open ? closeMindmap() : openMindmap(); }
     else if (e.ctrlKey && e.key.toLowerCase() === 'e') { e.preventDefault(); if (editorOpen) closeSourceEditor(); else openSourceEditor(); }
     else if (editorOpen && e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); saveSource(); }
-    else if (e.key === 'Escape') { if (!tocEl.classList.contains('is-hidden')) toggleToc(); }
+    // (an additional `else if (e.key === 'Escape')` used to sit here; it was
+    // unreachable — the Escape branch above already handles the key.)
   });
   function toggleToc() {
     tocEl.classList.toggle('is-hidden');
@@ -1647,10 +2160,19 @@
   // ---- appearance popover + font size (🎨 / A- / A+) --------------------------
   var appearBtn = document.getElementById('mdl-btn-appear');
   if (appearBtn) appearBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleAppearPop(); });
-  var sizeMinus = document.getElementById('mdl-btn-smaller') || document.getElementById('mdl-size-minus');
-  var sizePlus = document.getElementById('mdl-btn-larger') || document.getElementById('mdl-size-plus');
-  if (sizeMinus) sizeMinus.addEventListener('click', function () { setFontSize(currentFontSize() - 1); });
-  if (sizePlus) sizePlus.addEventListener('click', function () { setFontSize(currentFontSize() + 1); });
+  // Wire every A-/A+ entry point independently: the toolbar pair AND the pair
+  // inside the 🎨 popover. The old `#mdl-btn-smaller || #mdl-size-minus` chain
+  // short-circuited on the toolbar button, so the popover pair never got a
+  // listener and both buttons in the panel were dead.
+  [['mdl-btn-smaller', -1], ['mdl-btn-larger', 1],
+   ['mdl-size-minus', -1], ['mdl-size-plus', 1]].forEach(function (pair) {
+    var el = document.getElementById(pair[0]);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      e.stopPropagation(); // keep the popover open
+      zoomStep(pair[1]);
+    });
+  });
   if (document.addEventListener) {
     document.addEventListener('click', function (e) {
       var pop = document.getElementById('mdl-appear-pop');
@@ -1893,6 +2415,8 @@
           var tn = n.tagName || '';
           if (/^H[1-6]$/.test(tn) && Number(tn[1]) <= level) break;
           n.style.display = folded ? 'none' : '';
+          // remember what we hid so the print can put it back (unfoldForPrint)
+          n.setAttribute('data-mdl-fold-hidden', folded ? '1' : '0');
           n = n.nextElementSibling;
         }
       });
@@ -1942,6 +2466,168 @@
     });
   }
 
+  // Per-block code toolbar: 复制 / 换行 / 行号. The reference reader puts these on
+  // every block (hidden until hover); mdlight only had two global config flags,
+  // so a single wide snippet could not be wrapped without wrapping them all.
+  function codeBlockLines(code) {
+    if (code.dataset.mdlPerLine === '1') return;
+    var text = code.textContent;
+    if (text.indexOf('\n') === -1) return;
+    code.dataset.mdlPerLine = '1';
+    code.textContent = '';
+    var lines = text.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (i > 0) code.appendChild(document.createTextNode('\n'));
+      var s = document.createElement('span');
+      s.className = 'line';
+      s.textContent = lines[i];
+      code.appendChild(s);
+    }
+  }
+  function wireCodeTools() {
+    contentEl.querySelectorAll('pre.mdl-code').forEach(function (pre) {
+      if (pre.dataset.mdlTools === '1') return;
+      pre.dataset.mdlTools = '1';
+      var tools = document.createElement('div');
+      tools.className = 'mdl-code-tools';
+      function mk(label, title, on) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.title = title;
+        b.addEventListener('click', function (e) { e.stopPropagation(); on(b); });
+        tools.appendChild(b);
+        return b;
+      }
+      var copyLabel = t('code-copy', '复制');
+      mk(copyLabel, t('code-copy-hint', '复制这段代码'), function (b) {
+        var code = pre.querySelector('code');
+        var text = code ? code.textContent : '';
+        // the gutter numbers are CSS pseudo-elements, so they are never copied
+        function done(ok) {
+          b.textContent = ok ? '\u2713' : '\u2715';
+          setTimeout(function () { b.textContent = copyLabel; }, 1500);
+        }
+        // execCommand fallback: the async clipboard API is denied in some
+        // WebView2 configurations, and a copy button that silently fails is
+        // worse than none (same two-step the reference reader uses).
+        function legacy() {
+          try {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            var ok = document.execCommand('copy');
+            ta.remove();
+            done(ok);
+          } catch (e) { done(false); }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { done(true); }, legacy);
+        } else { legacy(); }
+      });
+      mk('\u21b5', t('code-wrap', '自动换行'), function (b) {
+        b.classList.toggle('is-on', pre.classList.toggle('mdl-code-wrapped'));
+      });
+      mk('#', t('code-lineno', '行号'), function (b) {
+        var code = pre.querySelector('code');
+        var on = !pre.classList.contains('mdl-lineno-on');
+        if (on && code) codeBlockLines(code);
+        pre.classList.toggle('mdl-lineno-on', on);
+        b.classList.toggle('is-on', on);
+      });
+      pre.appendChild(tools);
+    });
+  }
+
+  // Mermaid full-screen viewer: double-click a diagram to inspect it with
+  // wheel zoom / drag pan (the reference reader has the same affordance).
+  var mmFull = null, mmFullSvg = null, mmFullScale = 1, mmFullDrag = null;
+  function closeMmFull() {
+    if (!mmFull || mmFull.hidden) return;
+    mmFull.hidden = true;
+    mmFull.querySelector('.mdl-mm-full-body').innerHTML = '';
+    mmFullSvg = null;
+  }
+  function mmFullApply() {
+    if (mmFullSvg) mmFullSvg.style.transform = 'scale(' + mmFullScale + ')';
+  }
+  function openMmFull(svg) {
+    if (!mmFull) {
+      mmFull = document.createElement('div');
+      mmFull.className = 'mdl-mm-full';
+      mmFull.hidden = true;
+      var bar = document.createElement('div');
+      bar.className = 'mdl-mm-full-bar';
+      var title = document.createElement('span');
+      title.className = 'mdl-mm-full-title';
+      title.textContent = t('mm-viewer', '图表查看器');
+      bar.appendChild(title);
+      function barBtn(label, title2, fn) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'mdl-btn'; b.textContent = label; b.title = title2;
+        b.addEventListener('click', fn);
+        bar.appendChild(b);
+      }
+      barBtn('\u2212', t('zoom-out', '缩小'), function () { mmFullScale = Math.max(0.2, mmFullScale / 1.2); mmFullApply(); });
+      barBtn('+', t('zoom-in', '放大'), function () { mmFullScale = Math.min(8, mmFullScale * 1.2); mmFullApply(); });
+      barBtn(t('mm-fit', '适应'), t('mm-fit', '适应'), function () { mmFullScale = 1; mmFullApply(); });
+      barBtn('\u2715', t('close', '关闭 (Esc)'), closeMmFull);
+      var body = document.createElement('div');
+      body.className = 'mdl-mm-full-body';
+      body.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        mmFullScale = Math.max(0.2, Math.min(8, mmFullScale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+        mmFullApply();
+      }, { passive: false });
+      body.addEventListener('mousedown', function (e) {
+        mmFullDrag = { x: e.clientX, y: e.clientY, tx: mmFullSvg ? mmFullSvg.dataset.tx || 0 : 0, ty: mmFullSvg ? mmFullSvg.dataset.ty || 0 : 0 };
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', function (e) {
+        if (!mmFullDrag || !mmFullSvg) return;
+        var tx = Number(mmFullDrag.tx) + (e.clientX - mmFullDrag.x);
+        var ty = Number(mmFullDrag.ty) + (e.clientY - mmFullDrag.y);
+        mmFullSvg.dataset.tx = tx; mmFullSvg.dataset.ty = ty;
+        mmFullSvg.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + mmFullScale + ')';
+      });
+      document.addEventListener('mouseup', function () { mmFullDrag = null; });
+      var hint = document.createElement('div');
+      hint.className = 'mdl-mm-full-hint';
+      hint.textContent = t('mm-viewer-hint', '滚轮缩放 · 拖拽平移 · Esc 关闭');
+      mmFull.appendChild(bar);
+      mmFull.appendChild(body);
+      mmFull.appendChild(hint);
+      document.body.appendChild(mmFull);
+    }
+    var body2 = mmFull.querySelector('.mdl-mm-full-body');
+    body2.innerHTML = '';
+    mmFullScale = 1;
+    var clone = svg.cloneNode(true);
+    clone.removeAttribute('width');
+    clone.removeAttribute('height');
+    clone.style.transform = 'scale(1)';
+    clone.style.maxWidth = '92%';
+    clone.style.maxHeight = '92%';
+    body2.appendChild(clone);
+    mmFullSvg = clone;
+    mmFull.hidden = false;
+  }
+  function wireMermaidFullscreen() {
+    contentEl.querySelectorAll('x-mermaid').forEach(function (el) {
+      if (el.dataset.mdlFs === '1') return;
+      el.dataset.mdlFs = '1';
+      el.title = t('mm-dblclick', '双击放大');
+      el.addEventListener('dblclick', function () {
+        var svg = el.querySelector('svg');
+        if (svg) openMmFull(svg);
+      });
+    });
+  }
+
   function posKey() {
     return 'mdl-pos-' + (S.filepath || window.location.pathname);
   }
@@ -1982,7 +2668,7 @@
     preserveScroll(function (restore) {
       if (S.clientRender) {
         clientRender().then(function () {
-          buildToc(); wireTocActive(); wireCollapse(); wireCodeLineno(); wireTableFullscreen();
+          buildToc(); wireTocActive(); wireCollapse(); wireCodeLineno(); wireTableFullscreen(); wireCodeTools(); wireMermaidFullscreen();
           renderStat();
           renderMermaid();
           restore();
@@ -2006,7 +2692,7 @@
             } catch (e) {}
           }
           if (fresh) contentEl.innerHTML = fresh.innerHTML;
-          buildToc(); wireTocActive(); wireCollapse(); wireCodeLineno(); wireTableFullscreen();
+          buildToc(); wireTocActive(); wireCollapse(); wireCodeLineno(); wireTableFullscreen(); wireCodeTools(); wireMermaidFullscreen();
           renderStat();
           renderMermaid();
           restore();
@@ -2102,7 +2788,7 @@
     S.mermaidCount = out.mermaidCount || 0;
     S.eqCount = contentEl.querySelectorAll('x-equation').length;
     S.errCount = contentEl.querySelectorAll('.mdl-math-error').length;
-    if (post) { buildToc(); renderStat(); renderMermaid(); wireCollapse(); wireCodeLineno(); wireTableFullscreen(); wireTocActive(); wireEquationCopy(); }
+    if (post) { buildToc(); renderStat(); renderMermaid(); wireCollapse(); wireCodeLineno(); wireTableFullscreen(); wireTocActive(); wireEquationCopy(); wireCodeTools(); wireMermaidFullscreen(); }
     maybeWrapVBlocks();
     // UI polish: friendly placeholder for an empty doc + scroll-to-top button
     ensureEmptyState(contentEl, out.html || '');
@@ -2403,11 +3089,14 @@
       bar = document.createElement('div');
       bar.id = 'mdl-tab-bar';
       bar.className = 'mdl-tab-bar';
-      var titleRow = document.getElementById('mdl-title-row');
-      if (titleRow) titleRow.parentNode.insertBefore(bar, titleRow.nextSibling);
-      else document.body.insertBefore(bar, document.body.firstChild);
+      document.body.appendChild(bar);
     }
+    // Only 2+ documents need a strip (mdview's model: no chrome for a single file).
+    var multi = openTabs.length > 1;
+    document.body.classList.toggle('mdl-tabs-on', multi);
+    bar.hidden = !multi;
     bar.innerHTML = '';
+    if (!multi) return;
     for (var i = 0; i < openTabs.length; i++) {
       (function (tab, idx) {
         var el = document.createElement('div');
@@ -2432,8 +3121,11 @@
   function switchTab(idx) {
     var target = openTabs[idx];
     if (!target) return;
-    // Save current scroll position before leaving
+    // Save current scroll position before leaving. Capture the *current* path
+    // BEFORE flipping `active`: getActiveTab() would otherwise already return
+    // the target and the navigation below got skipped, so tabs never switched.
     var cur = getActiveTab();
+    var curPath = cur ? tabPath(cur) : '';
     if (cur) {
       var _h = document.body.scrollHeight - window.innerHeight;
       cur.pos = _h > 0 ? window.scrollY / _h : 0;
@@ -2443,9 +3135,11 @@
       openTabs[i].active = (i === idx);
     saveTabs();
     renderTabStrip();
+    var targetPath = tabPath(target);
+    if (targetPath === curPath) return;   // same document: nothing to load
     // Navigate to the new doc: native host POSTs /api/open-file; static host re-renders.
     var isNative = !!(window.chrome && window.chrome.webview);
-    if (isNative && target.path && tabPath(target) !== tabPath(getActiveTab())) {
+    if (isNative && target.path) {
       fetch('/api/open-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2459,7 +3153,7 @@
       if (typeof clientRender === 'function') clientRender(target.source);
       else location.reload();
     } else if (target.path) {
-      location.href = location.pathname + '?doc=' + encodeURIComponent(tabPath(target));
+      location.href = location.pathname + '?doc=' + encodeURIComponent(targetPath);
     }
     // Restore scroll position after paint
     setTimeout(function () {
@@ -2489,12 +3183,73 @@
       if (h > 0) window.scrollTo(0, v * h);
     }
   }
-  // Initialise the tab strip with the current document
+  // Reconcile the persisted tab list with the document that is actually open:
+  // keep the restored tabs (that is the whole point of persisting them) and make
+  // sure the current document has an entry. The old code replaced the list with a
+  // single tab on every load, so the restore path was dead code.
   if (S.filepath || S.name) {
-    openTabs = [{ path: S.filepath || '', name: S.name || 'untitled', active: true, pos: null }];
+    var curPath0 = S.filepath || '';
+    var found0 = false;
+    for (var ti = 0; ti < openTabs.length; ti++) {
+      if (curPath0 && tabPath(openTabs[ti]) === curPath0) { openTabs[ti].active = true; found0 = true; }
+      else openTabs[ti].active = false;
+    }
+    if (!found0) openTabs.push({ path: curPath0, name: S.name || 'untitled', active: true, pos: null });
     saveTabs();
   }
   renderTabStrip();
+
+  // ---- open a file (Ctrl+O / “打开”) ---------------------------------------
+  // `pickOpenFile` was referenced by the shortcut dispatcher but never defined,
+  // so Ctrl+O threw a ReferenceError and there was no way to open a second
+  // document (mdview has Ctrl+O + a real file dialog).
+  // The native host gets a real path from the C# dialog (/api/pick-file) because
+  // <input type=file> only reports a fake C:\fakepath\... path, which the local
+  // server cannot watch or read. The static Node host has no dialog IPC, so it
+  // reads the picked file into memory and renders it as a new tab.
+  function pickOpenFile() {
+    var isNative = !!(window.chrome && window.chrome.webview);
+    if (isNative) {
+      fetch('/api/pick-file', { method: 'POST' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (j === null) { pickOpenFileViaInput(); return; }   // old host: fall back
+          if (!j.ok || !j.path) return;                         // cancelled
+          var nm = String(j.path).split(/[\\/]/).pop();
+          openTab(j.path, nm, null);
+          return fetch('/api/open-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: j.path })
+          }).then(function () { location.reload(); });
+        })
+        .catch(function () { pickOpenFileViaInput(); });
+      return;
+    }
+    pickOpenFileViaInput();
+  }
+  function pickOpenFileViaInput() {
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.md,.markdown,.mdown,.mdwn,text/markdown,text/plain';
+    inp.style.display = 'none';
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      inp.remove();
+      if (!f) return;
+      var fr = new FileReader();
+      fr.onload = function () {
+        var src = String(fr.result || '');
+        openTab(f.name, f.name, src);
+        if (typeof clientRender === 'function') clientRender(src);
+        toast(t('open-done', '已打开：') + f.name);
+      };
+      fr.onerror = function () { toast(t('open-failed', '无法打开文件：') + f.name); };
+      fr.readAsText(f);
+    });
+    document.body.appendChild(inp);
+    inp.click();
+  }
 
   // ---- virtual scrolling / lazy rendering ----------------------------------
   // For very long documents (>200 top-level blocks) we wrap each block in a
@@ -2557,7 +3312,13 @@
         b.removeAttribute('data-lazy');
         // Render deferred children inside this block
         var mms = b.querySelectorAll('x-mermaid');
-        for (var j = 0; j < mms.length; j++) mmRenderOne(mms[j]);
+        for (var j = 0; j < mms.length; j++) {
+          // (this call used to pass only the element, so mmRenderOne's `mod`
+          // parameter received the <x-mermaid> node itself and mod.renderInto
+          // threw a TypeError inside the observer callback — silently, with no
+          // error card, killing every diagram in a >200-block document.)
+          if (mermaidState.loaded) mmRenderOne(mermaidState.loaded, mms[j], j);
+        }
         _io.unobserve(b);
       }
     }, { rootMargin: '400px 0px' });
@@ -2602,9 +3363,12 @@
   // picks up the result.
   buildToc();
   wireTocActive();
+  wireTocPane();
   wireCollapse();
   wireCodeLineno();
   wireTableFullscreen();
+  wireCodeTools();
+  wireMermaidFullscreen();
   wireEquationCopy();
   renderStat();
   renderMermaid();

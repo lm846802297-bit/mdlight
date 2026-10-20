@@ -75,8 +75,20 @@
     <button class="mdl-btn" id="mdl-find-next" title="下一个 (Enter)" data-i18n-title="find-next">↓</button>
     <button class="mdl-btn" id="mdl-find-close" title="关闭 (Esc)" data-i18n-title="find-close">✕</button>
   </div>
-  <div class="mdl-layout">
-    <nav class="mdl-toc" id="mdl-toc"><div class="mdl-toc-inner"></div></nav>
+  <div class="mdl-tab-bar" id="mdl-tab-bar" hidden></div>
+  <div class="mdl-layout" id="mdl-main">
+    <nav class="mdl-toc" id="mdl-toc">
+      <div class="mdl-toc-tabs" id="mdl-toc-tabs">
+        <button type="button" class="mdl-toc-tab is-active" data-pane="toc" data-i18n="tab-toc">目录</button>
+        <button type="button" class="mdl-toc-tab" data-pane="history" data-i18n="tab-history">历史</button>
+        <button type="button" class="mdl-toc-tab" data-pane="favorites" data-i18n="tab-favorites">收藏</button>
+      </div>
+      <div class="mdl-toc-body">
+        <div class="mdl-toc-pane" id="mdl-pane-toc"><div class="mdl-toc-inner"></div></div>
+        <div class="mdl-toc-pane" id="mdl-pane-history" hidden></div>
+        <div class="mdl-toc-pane" id="mdl-pane-favorites" hidden></div>
+      </div>
+    </nav>
     <main class="mdl-content" id="mdl-content">__BODY__</main>
   </div>
   <button class="mdl-totop" id="mdl-totop" title="返回顶部" data-i18n-title="to-top" aria-label="返回顶部">↑</button>

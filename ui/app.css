@@ -310,13 +310,62 @@ body {
   border-right: 1px solid var(--border);
   position: sticky; top: 44px;
   height: calc(100vh - 44px);
-  overflow-y: auto;
+  /* the panel scrolls its body, not itself, so the 目录/历史/收藏 tab strip stays
+     pinned while the list moves */
+  display: flex; flex-direction: column;
+  overflow: hidden;
   transition: margin-left .18s ease;
 }
+.mdl-toc-tabs { display: flex; flex: 0 0 auto; border-bottom: 1px solid var(--border); }
+.mdl-toc-tab {
+  flex: 1 1 0; min-width: 0;
+  padding: 8px 4px;
+  font: inherit; font-size: 12.5px;
+  color: var(--muted);
+  background: transparent; border: 0; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mdl-toc-tab:hover { color: var(--fg); }
+.mdl-toc-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+.mdl-toc-body { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; }
+.mdl-toc-pane[hidden] { display: none; }
+.mdl-toc-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; border-radius: 6px;
+  font-size: 13px; color: var(--muted); cursor: pointer;
+}
+.mdl-toc-row:hover { background: var(--code-bg); color: var(--fg); }
+.mdl-toc-row.is-current { opacity: .5; pointer-events: none; }
+.mdl-toc-row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mdl-toc-row-x { flex: 0 0 auto; opacity: .45; padding: 0 3px; }
+.mdl-toc-row-x:hover { opacity: 1; color: #c00; }
+.mdl-toc-day {
+  padding: 8px 8px 3px; font-size: 11.5px; font-weight: 600;
+  color: var(--muted);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.mdl-toc-day-x { cursor: pointer; opacity: .4; }
+.mdl-toc-day-x:hover { opacity: 1; color: #c00; }
+.mdl-toc-hint { padding: 10px 8px; font-size: 12px; color: var(--muted); }
+.mdl-toc-fav-add { margin: 6px 4px; width: calc(100% - 8px); }
 .mdl-toc.is-hidden { margin-left: -260px; }
 .mdl-toc-inner { padding: 14px 10px; }
+/* TOC rows: [caret][link] so a section can be folded without losing the level
+   indentation that .mdl-toc-l2/.l3/.l4 apply to the link itself. */
+.mdl-toc-node { display: flex; align-items: center; gap: 2px; }
+.mdl-toc-node.is-toc-hidden { display: none; }
+.mdl-toc-caret {
+  flex: 0 0 auto; width: 16px; height: 18px; margin: 0; padding: 0; border: 0;
+  background: none; color: var(--muted); cursor: pointer; font-size: 10px;
+  line-height: 1; border-radius: 4px;
+}
+.mdl-toc-caret.is-leaf { visibility: hidden; }
+.mdl-toc-caret:hover { background: var(--code-bg); color: var(--accent); }
+.mdl-toc-caret.is-folded { transform: rotate(-90deg); }
 .mdl-toc-item {
-  display: block; padding: 4px 8px; border-radius: 6px;
+  display: block; flex: 1 1 auto; min-width: 0;
+  padding: 4px 8px; border-radius: 6px;
   color: var(--muted); text-decoration: none; font-size: 13px;
   border-left: 2px solid transparent;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -413,14 +462,58 @@ body {
 /* code_wrap (config): soft-wrap long lines instead of the horizontal scrollbar */
 body.mdl-code-wrap .mdl-content pre.mdl-code { white-space: pre-wrap; word-break: break-word; }
 /* code_lineno (config): each .line span gets a gutter number via CSS counters */
-body.mdl-code-lineno .mdl-content pre code { counter-reset: line; }
-body.mdl-code-lineno .mdl-content pre code .line {
+/* the same rules also serve the per-block 行号 button (.mdl-lineno-on), which is
+   how the reference reader exposes it — per block, on demand, instead of only as
+   a global preference */
+body.mdl-code-lineno .mdl-content pre code,
+.mdl-content pre.mdl-code.mdl-lineno-on code { counter-reset: line; }
+body.mdl-code-lineno .mdl-content pre code .line,
+.mdl-content pre.mdl-code.mdl-lineno-on code .line {
   display: block; position: relative; padding-left: 3.2em; min-height: 1.5em;
 }
-body.mdl-code-lineno .mdl-content pre code .line::before {
+body.mdl-code-lineno .mdl-content pre code .line::before,
+.mdl-content pre.mdl-code.mdl-lineno-on code .line::before {
   counter-increment: line; content: counter(line);
   position: absolute; left: 0; width: 2.4em; text-align: right;
   color: color-mix(in srgb, var(--fg) 35%, transparent); font-size: .9em;
+}
+/* per-block code toolbar (复制 / 换行 / 行号), hidden until the block is hovered
+   so a document full of code stays quiet while reading */
+.mdl-code-tools {
+  position: absolute; top: 6px; right: 8px; z-index: 2;
+  display: flex; gap: 4px;
+  opacity: 0; transition: opacity .15s ease;
+}
+.mdl-content pre.mdl-code:hover .mdl-code-tools,
+.mdl-code-tools:focus-within { opacity: 1; }
+.mdl-code-tools button {
+  font: inherit; font-size: 11px; line-height: 1.4;
+  padding: 2px 6px; min-width: 22px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg); color: var(--muted); cursor: pointer;
+}
+.mdl-code-tools button:hover { color: var(--accent); border-color: var(--accent); }
+.mdl-code-tools button.is-on { color: var(--accent); border-color: var(--accent); }
+.mdl-content pre.mdl-code.mdl-code-wrapped { white-space: pre-wrap; word-break: break-word; }
+/* mermaid full-screen viewer */
+.mdl-mm-full {
+  position: fixed; inset: 0; z-index: 1002;
+  background: var(--bg); display: flex; flex-direction: column;
+}
+.mdl-mm-full[hidden] { display: none; }
+.mdl-mm-full-bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+.mdl-mm-full-title { flex: 1 1 auto; font-size: 13px; color: var(--muted); }
+.mdl-mm-full-body {
+  flex: 1 1 auto; overflow: hidden; position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+.mdl-mm-full-body svg { max-width: none; }
+.mdl-mm-full-hint {
+  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+  font-size: 12px; color: var(--muted); pointer-events: none;
 }
 
 /* Progressive-render placeholder: the raw markdown is shown for one frame
@@ -811,6 +904,12 @@ html { scroll-behavior: smooth; }
   max-width: 80vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .mdl-toast:not([hidden]) { animation: mdl-toast-in .18s ease forwards; }
+/* multi-line toasts (editor failure report, update errors) must wrap, not clip */
+.mdl-toast.is-wide {
+  max-width: min(560px, 86vw);
+  white-space: pre-wrap; overflow: visible; text-overflow: clip;
+  text-align: left; line-height: 1.5; padding: 10px 14px;
+}
 @keyframes mdl-toast-in {
   to { transform: translateX(-50%) translateY(0); opacity: 1; }
 }
@@ -933,7 +1032,17 @@ html { scroll-behavior: smooth; }
 }
 .mdl-sc-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
 .mdl-sc-lbl { opacity: .75; }
-.mdl-sc-val { font-weight: 600; }
+/* the value is a button now: clicking it rebinds the chord */
+.mdl-sc-val {
+  font-weight: 600; font: inherit; font-weight: 600; cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: inherit; border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  border-radius: 6px; padding: 1px 8px; min-width: 68px; text-align: center;
+}
+.mdl-sc-val:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.mdl-sc-row.is-recording .mdl-sc-val {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
 .mdl-sc-btns { margin-top: 8px; display: flex; gap: 8px; }
 .mdl-sc-btns .mdl-btn { cursor: pointer; }
 
@@ -941,7 +1050,16 @@ html { scroll-behavior: smooth; }
 body.mdl-drag-over { outline: 3px solid var(--mdl-accent, #5b8db8); outline-offset: -3px; }
 
 /* ---- multi-document tab bar ---- */
+/* Fixed right under the 44px topbar. It used to be appended to
+   `document.body.firstChild` (a #mdl-title-row that does not exist in
+   index.html), i.e. *behind* the fixed topbar, so the first tab was covered and
+   the bar pushed nothing; then it showed even with a single document. */
 .mdl-tab-bar {
+  position: fixed;
+  top: 44px;
+  left: 0;
+  right: 0;
+  z-index: 55;
   display: flex;
   flex: 0 0 auto;
   background: var(--mdl-bg-alt, #f0f0f0);
@@ -950,6 +1068,10 @@ body.mdl-drag-over { outline: 3px solid var(--mdl-accent, #5b8db8); outline-offs
   overflow-y: hidden;
   max-height: 32px;
 }
+.mdl-tab-bar[hidden] { display: none; }
+/* the bar is only shown for 2+ documents (mdview never shows an empty strip) */
+body.mdl-tabs-on .mdl-layout { padding-top: 76px; }
+body.mdl-tabs-on .mdl-toc { top: 76px; height: calc(100vh - 76px); }
 .mdl-tab {
   display: inline-flex;
   align-items: center;
@@ -1025,7 +1147,8 @@ body.mdl-layout-slide h1 {
     break-after: page;
   }
   .pdf-page:last-child { page-break-after: auto; break-after: auto; }
-  .mdl-folded { display: none; }
+  /* No .mdl-folded rule here: folded sections are un-folded in JS before the
+     print (ui/app.js unfoldForPrint) so the printed document is complete. */
 }
 
 /* feat13: side-by-side dual view */

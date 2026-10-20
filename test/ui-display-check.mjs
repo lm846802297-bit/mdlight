@@ -75,7 +75,11 @@ const ep = spawn(EDGE, ['--headless=new', '--disable-gpu', '--no-first-run', '--
   '--window-size=1440,900', '--user-data-dir=' + prof, `--remote-debugging-port=${cdpPort}`, 'about:blank'],
   { detached: true, stdio: 'ignore' });
 ep.unref();
-const hp = spawn(EXE, [docPath, '--port', String(port), '--no-window'], { detached: true, stdio: 'ignore' });
+// isolate the host's config dir: these tests change font/width/shortcuts, and
+// without this they would read and overwrite the real %APPDATA%\mdlight\config.json
+// (and the stored width would race with the test's own width assertions).
+const hp = spawn(EXE, [docPath, '--port', String(port), '--no-window'],
+  { detached: true, stdio: 'ignore', env: Object.assign({}, process.env, { MDLIGHT_CONFIG_DIR: dir }) });
 hp.unref();
 await sleep(2000);
 const c = await makeClient((await cdpTarget()).webSocketDebuggerUrl);
@@ -93,6 +97,7 @@ const res = await ev(c, `(async()=>{
   await new Promise(r=>setTimeout(r,900));
   const content = document.getElementById('mdl-content');
   const toc = document.getElementById('mdl-toc');
+  const tocBody = toc.querySelector('.mdl-toc-body');
   const h3s = [...content.querySelectorAll('h3')];
   const links = [...toc.querySelectorAll('a')];
   const lr = links.map(a=>a.getBoundingClientRect());
@@ -169,8 +174,9 @@ const res = await ev(c, `(async()=>{
     pageScrollX: paneScrollW > window.innerWidth + 1,
     tocItems: links.length,
     tocOverlaps: overlaps,
-    tocOverflowY: toc ? getComputedStyle(toc).overflowY : null,
-    tocScrollable: toc ? toc.scrollHeight > toc.clientHeight : false,
+    // 三标签改版后 .mdl-toc 只是外框（overflow:hidden），真正滚动的是 .mdl-toc-body
+    tocOverflowY: tocBody ? getComputedStyle(tocBody).overflowY : null,
+    tocScrollable: tocBody ? tocBody.scrollHeight > tocBody.clientHeight : false,
     toastVisible: !!(toast && toast.hidden === false),
     toastText: toast ? (toast.textContent||'').slice(0,60) : '',
   };
@@ -196,8 +202,8 @@ else {
 
   // 行宽可选（用户需求：现在的文字只在中间、位置太小）
   const W = res.widths || {};
-  ok(Array.isArray(res.widthOptions) && res.widthOptions.join(',') === 'narrow,normal,wide,full',
-    '🎨 外观里有四个行宽选项（窄/标准/宽/全宽）', JSON.stringify(res.widthOptions));
+  ok(Array.isArray(res.widthOptions) && res.widthOptions.join(',') === 'auto,narrow,normal,wide,full',
+    '🎨 外观里有五个行宽选项（自动/窄/标准/宽/全宽）', JSON.stringify(res.widthOptions));
   ok(W.narrow === 700 && W.normal === 860, '窄 = 700px、标准 = 860px', JSON.stringify(W));
   ok(W.wide === 1100, '宽 = 1100px', String(W.wide));
   ok(W.full > W.wide, '全宽占满可用宽度', W.full + ' vs 宽 ' + W.wide + '，可用 ' + W.available);
