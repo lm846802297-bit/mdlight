@@ -56,6 +56,12 @@ const doc = [
   '',
   'ccc',
   '',
+  '## 表格节',
+  '',
+  '| 列一 | 列二 |',
+  '| --- | --- |',
+  '| 1 | 2 |',
+  '',
 ].join('\n');
 const dir = mkdtempSync(join(tmpdir(), 'mdl-uix-'));
 const docPath = join(dir, 'uix.md');
@@ -208,6 +214,39 @@ const res = await ev(c, `(async()=>{
   const v2 = document.querySelector('.mdl-mm-full');
   out.mmViewerClosed = !v2 || v2.hidden === true || getComputedStyle(v2).display === 'none';
 
+  // ---- 7. 目录字号 / 目录间距（指针在目录上时 Ctrl/Alt+滚轮）----
+  const cssNum = (n2) => parseFloat(getComputedStyle(rootEl).getPropertyValue(n2)) || 0;
+  out.tocFontBefore = cssNum('--mdl-toc-font');
+  toc.dispatchEvent(new WheelEvent('wheel', { deltaY:-120, ctrlKey:true, bubbles:true, cancelable:true }));
+  await s(250);
+  out.tocFontAfter = cssNum('--mdl-toc-font');
+  out.tocGapBefore = cssNum('--mdl-toc-w');
+  out.tocGapPaneBefore = Math.round(toc.getBoundingClientRect().width);
+  toc.dispatchEvent(new WheelEvent('wheel', { deltaY:-120, altKey:true, bubbles:true, cancelable:true }));
+  await s(250);
+  out.tocGapAfter = cssNum('--mdl-toc-w');
+  out.tocGapPaneAfter = Math.round(toc.getBoundingClientRect().width);
+  out.tocFontStored = localStorage.getItem('mdl-toc-font') || '';
+  out.tocGapStored = localStorage.getItem('mdl-toc-w') || '';
+  // the chip echoes the value so a wheel gesture is never silent
+  out.tocChip = (document.getElementById('mdl-zoom-chip') || {}).textContent || '';
+  // shortcut reset (Ctrl+Shift+0 = 目录字号复位)
+  document.dispatchEvent(new KeyboardEvent('keydown', { key:'0', ctrlKey:true, shiftKey:true, bubbles:true }));
+  await s(250);
+  out.tocFontReset = cssNum('--mdl-toc-font');
+
+  // ---- 8. 表格全屏：进入后 Esc 必须能退出 ----
+  const fsBtn = content.querySelector('table button.mdl-tbl-fs');
+  out.tblBtn = !!fsBtn;
+  if (fsBtn) { fsBtn.click(); await s(300); }
+  const fsTbl = content.querySelector('table.mdl-tbl-fs-on');
+  out.tblFsOn = !!fsTbl;
+  out.tblBodyLocked = document.body.style.overflow === 'hidden';
+  document.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', bubbles:true }));
+  await s(300);
+  out.tblFsClosed = !content.querySelector('table.mdl-tbl-fs-on');
+  out.tblBodyFreed = document.body.style.overflow === '';
+
   return out;
  } catch (e) { return { __err: String((e && e.stack) || e) }; }
 })()`);
@@ -240,6 +279,18 @@ else {
   ok(res.mmViewerOpen === true, '双击 mermaid 打开全屏查看器');
   ok(res.mmViewerHasSvg === true, '查看器里有 SVG');
   ok(res.mmViewerClosed === true, 'Esc 关闭 mermaid 查看器');
+  ok(res.tocFontAfter > res.tocFontBefore, '目录上 Ctrl+滚轮放大目录字号', res.tocFontBefore + ' → ' + res.tocFontAfter);
+  ok(res.tocGapAfter > res.tocGapBefore, '目录上 Alt+滚轮加宽目录间距', res.tocGapBefore + ' → ' + res.tocGapAfter);
+  ok((res.tocGapPaneAfter - res.tocGapPaneBefore) === 40, '目录间距按 40px 步进（面板真的变宽）',
+    res.tocGapPaneBefore + ' → ' + res.tocGapPaneAfter);
+  ok(parseFloat(res.tocFontStored) === res.tocFontAfter, '目录字号写 localStorage', res.tocFontStored);
+  ok(parseFloat(res.tocGapStored) === res.tocGapAfter, '目录间距写 localStorage', res.tocGapStored);
+  ok(/目录/.test(res.tocChip || ''), '胶囊反馈显示「目录」变更', res.tocChip);
+  ok(res.tocFontReset === 13, 'Ctrl+Shift+0 复位目录字号', String(res.tocFontReset));
+  ok(res.tblBtn === true, '表格有全屏按钮');
+  ok(res.tblFsOn === true && res.tblBodyLocked === true, '点全屏后表格铺满且锁滚动');
+  ok(res.tblFsClosed === true, 'Esc 退出表格全屏');
+  ok(res.tblBodyFreed === true, 'Esc 后恢复页面滚动');
 }
 
 console.log('\n结果: ' + pass + ' 通过, ' + fail + ' 失败');

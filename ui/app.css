@@ -305,7 +305,9 @@ body {
 /* ---- layout ---- */
 .mdl-layout { display: flex; padding-top: 44px; min-height: 100vh; }
 .mdl-toc {
-  width: 260px; flex-shrink: 0;
+  /* 目录字号 / 目录间距（栏宽）可由 Ctrl+滚轮 / Alt+滚轮（指针在目录上时）调整，
+     也可用快捷键，值存在 config.json 的 tocFont / tocWidth */
+  width: var(--mdl-toc-w, 260px); flex-shrink: 0;
   background: var(--toc-bg);
   border-right: 1px solid var(--border);
   position: sticky; top: 44px;
@@ -320,7 +322,7 @@ body {
 .mdl-toc-tab {
   flex: 1 1 0; min-width: 0;
   padding: 8px 4px;
-  font: inherit; font-size: 12.5px;
+  font: inherit; font-size: calc(var(--mdl-toc-font, 13px) - 1px);
   color: var(--muted);
   background: transparent; border: 0; cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -349,7 +351,7 @@ body {
 .mdl-toc-day-x:hover { opacity: 1; color: #c00; }
 .mdl-toc-hint { padding: 10px 8px; font-size: 12px; color: var(--muted); }
 .mdl-toc-fav-add { margin: 6px 4px; width: calc(100% - 8px); }
-.mdl-toc.is-hidden { margin-left: -260px; }
+.mdl-toc.is-hidden { margin-left: calc(-1 * var(--mdl-toc-w, 260px)); }
 .mdl-toc-inner { padding: 14px 10px; }
 /* TOC rows: [caret][link] so a section can be folded without losing the level
    indentation that .mdl-toc-l2/.l3/.l4 apply to the link itself. */
@@ -366,7 +368,7 @@ body {
 .mdl-toc-item {
   display: block; flex: 1 1 auto; min-width: 0;
   padding: 4px 8px; border-radius: 6px;
-  color: var(--muted); text-decoration: none; font-size: 13px;
+  color: var(--muted); text-decoration: none; font-size: var(--mdl-toc-font, 13px);
   border-left: 2px solid transparent;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

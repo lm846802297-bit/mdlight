@@ -512,6 +512,52 @@
     var w = widthEntry(order[i]);
     showZoomChip(t('zoom-width', '栏宽') + ' ' + (w[1] ? w[1] + 'px' : widthLabel(w)));
   }
+  // ---- 目录字号 / 目录间距（栏宽） --------------------------------------------
+  // The reference reader lets you tune the outline without leaving the keyboard:
+  // Ctrl+wheel over the panel changes its text size, Alt+wheel its width (the
+  // 40px step is the same one it uses for the 正文-目录 gap). Both persist.
+  var TOC_FONT_DEF = 13, TOC_FONT_MIN = 11, TOC_FONT_MAX = 20;
+  var TOC_W_DEF = 260, TOC_W_MIN = 200, TOC_W_MAX = 420, TOC_W_STEP = 40;
+  function cssNum(name, dflt) {
+    var v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+    return isFinite(v) && v > 0 ? v : dflt;
+  }
+  function applyTocFont(px) {
+    px = Math.max(TOC_FONT_MIN, Math.min(TOC_FONT_MAX, Math.round(px * 10) / 10));
+    document.documentElement.style.setProperty('--mdl-toc-font', px + 'px');
+    try { localStorage.setItem('mdl-toc-font', String(px)); } catch (e) {}
+    return px;
+  }
+  function applyTocWidth(px) {
+    px = Math.max(TOC_W_MIN, Math.min(TOC_W_MAX, Math.round(px)));
+    document.documentElement.style.setProperty('--mdl-toc-w', px + 'px');
+    try { localStorage.setItem('mdl-toc-w', String(px)); } catch (e) {}
+    return px;
+  }
+  function tocFontStep(d) {
+    var v = applyTocFont(cssNum('--mdl-toc-font', TOC_FONT_DEF) + d);
+    showZoomChip(t('zoom-toc-font', '目录字号') + ' ' + Math.round(v) + 'px');
+    if (S.cfg) S.cfg.tocFont = v;
+    postConfig({ tocFont: v });
+  }
+  function tocWidthStep(d) {
+    var v = applyTocWidth(cssNum('--mdl-toc-w', TOC_W_DEF) + d * TOC_W_STEP);
+    showZoomChip(t('zoom-toc-gap', '目录间距') + ' ' + Math.round(v) + 'px');
+    if (S.cfg) S.cfg.tocWidth = v;
+    postConfig({ tocWidth: v });
+  }
+  function tocFontReset() {
+    applyTocFont(TOC_FONT_DEF);
+    showZoomChip(t('zoom-toc-font', '目录字号') + ' ' + TOC_FONT_DEF + 'px');
+    if (S.cfg) S.cfg.tocFont = TOC_FONT_DEF;
+    postConfig({ tocFont: TOC_FONT_DEF });
+  }
+  function tocWidthReset() {
+    applyTocWidth(TOC_W_DEF);
+    showZoomChip(t('zoom-toc-gap', '目录间距') + ' ' + TOC_W_DEF + 'px');
+    if (S.cfg) S.cfg.tocWidth = TOC_W_DEF;
+    postConfig({ tocWidth: TOC_W_DEF });
+  }
   // keep '自适应' in step with the window
   var widthResizeTimer = 0;
   window.addEventListener('resize', function () {
@@ -522,12 +568,20 @@
   });
   // Ctrl+wheel = text size, Alt+wheel = column width. Same gestures as the
   // reference reader; before this the only way to resize was the toolbar.
+  // Over the outline panel the same chords tune the outline itself (font size /
+  // panel width), which is what "the gap" means there.
   window.addEventListener('wheel', function (e) {
     if (!(e.ctrlKey || e.metaKey) && !e.altKey) return;
     var tgt = e.target;
-    if (tgt && tgt.closest && tgt.closest('.mdl-toc, .mdl-mindmap, .mdl-mm-full, #mdl-editor, .mdl-sc-panel, .mdl-marp')) return;
+    var inToc = !!(tgt && tgt.closest && tgt.closest('.mdl-toc'));
+    if (!inToc && tgt && tgt.closest && tgt.closest('.mdl-mindmap, .mdl-mm-full, #mdl-editor, .mdl-sc-panel, .mdl-marp')) return;
     e.preventDefault();
     var up = e.deltaY < 0;
+    if (inToc) {
+      if (e.altKey) tocWidthStep(up ? 1 : -1);
+      else tocFontStep(up ? 1 : -1);
+      return;
+    }
     if (e.altKey) widthStep(up ? 1 : -1);
     else zoomStep(up ? 1 : -1);
   }, { passive: false });
@@ -636,6 +690,8 @@
       if (sv) sv.textContent = fs + 'px';
     }
     if (cfg.contentWidth) applyContentWidth(String(cfg.contentWidth));
+    if (cfg.tocFont) applyTocFont(parseFloat(cfg.tocFont));
+    if (cfg.tocWidth) applyTocWidth(parseFloat(cfg.tocWidth));
     if (cfg.theme) {
       var map = { system: 'auto', light: 'light', dark: 'dark', sepia: 'sepia' };
       var want = map[String(cfg.theme)] || String(cfg.theme);
@@ -982,6 +1038,8 @@
   }
   function printDoc() {
     unfoldForPrint();
+    // a full-screen table is position:fixed and would land on its own page
+    closeTableFullscreen();
     applyPdfMacros();
     // Let the paginated layout paint before the print dialog locks the DOM.
     setTimeout(function () { window.print(); }, 80);
@@ -1826,6 +1884,12 @@
     'width-up': 'alt+up',
     'width-down': 'alt+down',
     'width-auto': 'alt+0',
+    'toc-font-up': 'ctrl+shift+up',
+    'toc-font-down': 'ctrl+shift+down',
+    'toc-font-reset': 'ctrl+shift+0',
+    'toc-gap-up': 'alt+shift+up',
+    'toc-gap-down': 'alt+shift+down',
+    'toc-gap-reset': 'alt+shift+0',
   };
   // Human labels for the panel (the panel used to print the raw action id, so
   // reading it meant knowing the internal key names).
@@ -1848,6 +1912,12 @@
     'width-up': ['加宽正文', 'Wider column'],
     'width-down': ['变窄正文', 'Narrower column'],
     'width-auto': ['行宽自适应', 'Auto column width'],
+    'toc-font-up': ['目录字号 +', 'Outline text +'],
+    'toc-font-down': ['目录字号 −', 'Outline text −'],
+    'toc-font-reset': ['目录字号复位', 'Reset outline text'],
+    'toc-gap-up': ['目录间距 +', 'Outline wider'],
+    'toc-gap-down': ['目录间距 −', 'Outline narrower'],
+    'toc-gap-reset': ['目录间距复位', 'Reset outline width'],
   };
   function scLabel(a) {
     var pair = SC_LABELS[a];
@@ -1918,6 +1988,12 @@
       case 'width-up': widthStep(1); break;
       case 'width-down': widthStep(-1); break;
       case 'width-auto': setContentWidth('auto'); break;
+      case 'toc-font-up': tocFontStep(1); break;
+      case 'toc-font-down': tocFontStep(-1); break;
+      case 'toc-font-reset': tocFontReset(); break;
+      case 'toc-gap-up': tocWidthStep(1); break;
+      case 'toc-gap-down': tocWidthStep(-1); break;
+      case 'toc-gap-reset': tocWidthReset(); break;
     }
   }
   // Cmd/Ctrl+K: show the shortcut panel listing every mapping.
@@ -2100,6 +2176,9 @@
       // this chain, so Ctrl+K could only be undone with Ctrl+K or the button.
       if (mmFull && !mmFull.hidden) { e.preventDefault(); closeMmFull(); return; }
       if (scPanel && !scPanel.hidden) { e.preventDefault(); closeScPanel(); return; }
+      // a full-screen table is a layer too: before this Esc left it stuck open
+      // (the only way out was clicking the toggle again)
+      if (closeTableFullscreen()) { e.preventDefault(); return; }
       var aPop = document.getElementById('mdl-appear-pop');
       if (aPop && !aPop.hidden) { e.preventDefault(); aPop.hidden = true; return; }
       if (mm.open) { e.preventDefault(); closeMindmap(); }
@@ -2331,6 +2410,10 @@
     try {
       var cw = localStorage.getItem('mdl-content-width');
       if (cw) applyContentWidth(cw);
+      var tf = parseFloat(localStorage.getItem('mdl-toc-font') || '');
+      if (isFinite(tf) && tf > 0) applyTocFont(tf);
+      var tw = parseFloat(localStorage.getItem('mdl-toc-w') || '');
+      if (isFinite(tw) && tw > 0) applyTocWidth(tw);
     } catch (e) {}
     renderSkinGrid();
     renderFontSelect();
@@ -2446,6 +2529,17 @@
     });
   }
 
+  // Escape (and every other layer switch) closes a full-screen table through this
+  // single helper; the toggle used to be the only way out.
+  function closeTableFullscreen() {
+    var on = contentEl.querySelector('table.mdl-tbl-fs-on');
+    if (!on) return false;
+    on.classList.remove('mdl-tbl-fs-on');
+    var b = on.querySelector('button.mdl-tbl-fs');
+    if (b) b.textContent = '⛶';
+    document.body.style.overflow = '';
+    return true;
+  }
   function wireTableFullscreen() {
     contentEl.querySelectorAll('table').forEach(function (tbl) {
       if (tbl.dataset.mdlFs === '1') return;
@@ -2457,10 +2551,13 @@
       btn.title = t('table-fullscreen','表格全屏');
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
-        var on = tbl.classList.toggle('mdl-tbl-fs-on');
-        btn.textContent = on ? '✕' : '⛶';
-        if (on) document.body.style.overflow = 'hidden';
-        else document.body.style.overflow = '';
+        // only one table at a time: entering full screen leaves any other one
+        var wasOn = tbl.classList.contains('mdl-tbl-fs-on');
+        closeTableFullscreen();
+        if (wasOn) return;
+        tbl.classList.add('mdl-tbl-fs-on');
+        btn.textContent = '✕';
+        document.body.style.overflow = 'hidden';
       });
       tbl.appendChild(btn);
     });

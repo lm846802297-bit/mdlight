@@ -67,6 +67,8 @@
       'tab-close': 'Close',
       'zoom-font': 'Text size',
       'zoom-width': 'Column width',
+      'zoom-toc-font': 'Outline text',
+      'zoom-toc-gap': 'Outline width',
       'code-copy': 'Copy',
       'code-copy-hint': 'Copy this code block',
       'code-wrap': 'Soft wrap',
