@@ -399,6 +399,18 @@ namespace Mdlight
                 return;
             }
 
+            // 📂 pick-file: Ctrl+O. Shows the Windows open dialog on the UI thread
+            // and returns its path, so the page can hand it back to /api/open-file
+            // ({path}) and switch the window to a real, editable document. Without
+            // this the shortcut fell back to a client-side file input, which yields
+            // a path-less copy that could not be saved.
+            if (path == "/api/pick-file" &&
+                string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                HandlePickFile(res);
+                return;
+            }
+
             // ⇣ import-md: body {"name":"X.md","content":"...markdown..."}; write the
             // converted .md next to the doc and swap to it (一键导入 result).
             if (path == "/api/import-md" &&
@@ -705,6 +717,36 @@ namespace Mdlight
 
         /// <summary>POST /api/open-file — body is {"name":"X.md","content":"..."};
         /// write the file next to the current doc and reload the watcher.</summary>
+        /// <summary>POST /api/pick-file — Ctrl+O. Runs the open dialog on the UI
+        /// thread and answers {ok:true,path:"…"} (path null when cancelled) or
+        /// {ok:false,error:…}. --no-window hosts answer ok:false so the page falls
+        /// back to its file input.</summary>
+        private static void HandlePickFile(HttpListenerResponse res)
+        {
+            NativeWindow win = Program.Current;
+            if (win == null)
+            {
+                SendJson(res, "{\"ok\":false,\"error\":\"no-window\"}");
+                return;
+            }
+            string picked;
+            try
+            {
+                // ShowDialog must not run on the listener's thread: the dialog needs
+                // the STA UI thread that owns the window, and it needs an owner or it
+                // can open behind the frameless window.
+                picked = (string)win.Invoke(new Func<string>(Program.PickFile));
+            }
+            catch (Exception e)
+            {
+                Util.Log("pick-file failed: " + e.Message);
+                SendJson(res, "{\"ok\":false,\"error\":" + Util.JsonStr(e.Message) + "}");
+                return;
+            }
+            SendJson(res, "{\"ok\":true,\"path\":" +
+                (picked == null ? "null" : Util.JsonStr(picked)) + "}");
+        }
+
         private void HandleOpenFile(HttpListenerRequest req, HttpListenerResponse res)
         {
             string body;

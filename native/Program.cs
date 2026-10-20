@@ -347,7 +347,11 @@ private static readonly string MutexName = "Globalmdlight-single-" +
             t.Start();
         }
 
-        private static string PickFile()
+        /// <summary>The live window, or null in --no-window mode. Lets the HTTP
+        /// server run dialog code on the UI thread (see HandlePickFile).</summary>
+        internal static NativeWindow Current;
+
+        internal static string PickFile()
         {
             // automation hook (mirrors mdlight.mjs): skip the dialog entirely
             string pick = Environment.GetEnvironmentVariable("MDLIGHT_PICK");
@@ -392,6 +396,9 @@ private static readonly string MutexName = "Globalmdlight-single-" +
             try
             {
                 win = new NativeWindow(server, doc);
+                // Exposed so the HTTP server can marshal dialog calls (Ctrl+O's
+                // 文件选择框) onto the UI thread; no-window mode leaves it null.
+                Current = win;
                 Application.Run(win);
                 // A WebView2 init failure used to still exit 0, so launchers and
                 // scripts believed the document had been shown.
@@ -399,6 +406,7 @@ private static readonly string MutexName = "Globalmdlight-single-" +
             }
             finally
             {
+                Current = null;
                 server.Stop();
                 if (win != null) win.Dispose();
             }

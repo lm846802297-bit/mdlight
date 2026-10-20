@@ -277,6 +277,14 @@ try {
   ok(fSvg === 0, '导出件不含 mermaid 引擎（图表显示源码）', 'got ' + fSvg);
   ok(exceptions.length === 0, '导出件无未捕获异常',
     exceptions.slice(0, 2).join(' | '));
+
+  // ---- [5] Ctrl+O route exists in headless mode -------------------------
+  // The real dialog needs the window (verified separately); --no-window must
+  // still answer, so the page falls back to its file input instead of hanging.
+  console.log('\n[5] Ctrl+O 路由');
+  const pk = await (await fetch(BASE + '/api/pick-file', { method: 'POST' })).json();
+  ok(pk.ok === false && pk.error === 'no-window',
+    '★ 无窗口模式 /api/pick-file 明确回 no-window（页面据此走文件输入兜底）', JSON.stringify(pk));
 } catch (e) {
   fail++;
   console.log('  ✗ 测试异常: ' + (e && e.stack || e));
