@@ -171,6 +171,24 @@ mermaid 全量非常大，但**阅读一份文档并不需要全部**。实测�
 
 自定义图表主题：图表跟随页面主题（亮/暗/羊皮纸）自动重渲染。
 
+## 大文档流畅度：实测数据
+
+定位「打开大型 Markdown 文档依然流畅不卡」，用**真实 exe + headless Edge** 逐项实测
+（`node test/bench-large.mjs`，可随时复现）：
+
+| 度量 | 结果 |
+|---|---|
+| 文档 | 217 KB，约 **1720 个公式**，**1080 个内容块**（触发虚拟滚动 >200 阈值） |
+| 首屏渲染完成 | **约 1.2 秒**（Web Worker 离线程渲染，期间主线程可滚动/可交互） |
+| 渲染期主线程卡顿 | **0–1 帧超 20ms**（掉帧趋零） |
+| 整页滚动流畅度 | **0 掉帧**，最差帧 17ms（<16.7ms 目标 + 可接受余量） |
+| 虚拟滚动 | 生效：1080 块全部懒渲染，仅可见块触发 KaTeX/mermaid |
+
+原理：`ui/renderer-worker.js` 把整条渲染管线（markdown-it + KaTeX + hljs，纯字符串工作）
+搬进 Web Worker，主线程不被阻塞；同时先把 markdown 原文塞进 `<pre>` 占位让首帧立即可见
+（无白屏），KaTeX 完成后替换。超 200 块时再叠加 IntersectionObserver 懒渲染避免一次画完。
+实现细节见 `core/renderer.mjs` / `ui/app.js` 的 `renderInWorker` / `maybeWrapVBlocks`。
+
 ## 架构（1 图）
 
 ```
@@ -237,6 +255,8 @@ node test/latex2md-check.mjs  # 52 项：LaTeX → Markdown 转换
 node test/pdf2md-check.mjs    # 18 项：纯 JS PDF 文本提取 + Markdown 化
 node test/pdf2md-cid-check.mjs # 11 项：中文字体（CID/identity-H + ToUnicode CMap）解码
 node test/import-check.mjs    # 15 项：一键导入管线（/api/import-md + 多格式数学渲染）
+node test/update-check.mjs    # 6 项：自更新 + .md 绑定路由
+node test/bench-large.mjs     # 大文档流畅度实测（真实 exe + headless Edge，需要 Edge）
 node test/mermaid-browser.mjs  # 19 项：真实浏览器验证懒加载（需 Edge，可选）
 node tools/build.mjs           # 构建 dist/（含 mermaid 按需包）
 npm test                       # 上面除 browser 外的全部

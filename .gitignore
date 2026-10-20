@@ -9,6 +9,11 @@ mdlight.exe
 # --- 测试输出 ---
 test/out/
 
+# --- 基准测试运行时生成的临时文档 / Edge profile ---
+bench-*.md
+.edge-prof*/
+.edge-prof*
+
 # --- 临时文件 ---
 *.mdlight-tmp-*
 *.log
