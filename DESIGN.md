@@ -196,15 +196,15 @@ mdlight/
 
 ### 实现
 `core/renderer.mjs` 增加 `mdToLatex(src)` 纯函数：
-- 标题 → section / subsection / subsubsection
-- **bold** / *italic* / `code` / ~~strike~~ → 	extbf / 	extit / 	exttt / 纯文本
-- 表格 → egin{tabular} + hline
-- 目录列表 → egin{itemize} / egin{enumerate}
-- 引用 → egin{quote}
-- 图片 → includegraphics[width=linewidth]
-- 代码块 → egin{verbatim}
-- $math$ 通过、[link](url) → href
-- mermaid 图 → % 注释块
+- 标题 → \section / \subsection / \subsubsection
+- **bold** / *italic* / `code` / ~~strike~~ → \textbf / \textit / \texttt / 纯文本
+- 表格 → \begin{tabular} + \hline
+- 目录列表 → \begin{itemize} / \begin{enumerate}
+- 引用 → \begin{quote}
+- 图片 → \includegraphics[width=\linewidth]
+- 代码块 → \begin{verbatim}
+- `$math$` 原样通过、`[link](url)` → \href
+- mermaid 图 → `%` 注释块
 
-客户端流程：TeX 按钮 → fetch /api/source → mdToLatex() → POST /api/export-latex?name=X.tex → 服务端写写文档目录。
+客户端流程：TeX 按钮 → fetch /api/source → mdToLatex() → POST /api/export-latex?name=X.tex → 服务端写入文档目录。
 单一文件导出场景（无服务器）时 TeX 按钮显示 no-service 提示。

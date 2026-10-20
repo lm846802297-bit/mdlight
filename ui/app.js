@@ -997,7 +997,7 @@
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .then(function (j) {
         if (!j || !j.ok) { if (!silent) toast(t('update-unavailable', '检查更新仅在 exe 版可用')); return; }
-        if (j.error) { toast(j.message || t('update-err', '检查更新失败')); return; }
+        if (j.error) { if (!silent) toast(j.message || t('update-err', '检查更新失败')); return; }
         if (j.hasUpdate && j.downloadUrl) {
           var doIt = confirm(j.message + '\n\n' + t('update-ask', '是否立即下载并更新？'));
           if (doIt) {
@@ -1007,7 +1007,7 @@
               .then(function (r2) { toast((r2 && r2.message) || t('update-applied', '更新已开始，请稍候重启')); })
               .catch(function () { toast(t('update-err', '更新失败')); });
           }
-        } else {
+        } else if (!silent) {
           toast(j.message || (t('uptodate', '已是最新版本') + ' v' + (j.current || '')));
         }
       })
@@ -1706,7 +1706,7 @@
     ctxMenu.appendChild(ctxItem('⚙', t('settings', '设置'), '', function () {
       var b = document.getElementById('mdl-btn-settings'); if (b) b.click();
     }, !live));
-    ctxMenu.appendChild(ctxItem('⟳', t('check-update', '检查更新'), '', function () { checkUpdate(true); }, !live));
+    ctxMenu.appendChild(ctxItem('⟳', t('check-update', '检查更新'), '', function () { checkUpdate(false); }, !live));
     ctxMenu.appendChild(ctxItem('🔗', t('bind-md', '绑定/解绑 .md'), '', function () { bindMdDialog(); }, !live));
     ctxMenu.appendChild(ctxItem('🌐', '中文 / English', '', function () {
       var b = document.getElementById('mdl-btn-lang'); if (b) b.click();

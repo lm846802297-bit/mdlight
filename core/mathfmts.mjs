@@ -535,10 +535,15 @@ function convertBackticks(text, toLatex) {
     let j = i;
     while (j < n && text[j] === '`') j += 1;
     const tickLen = j - i;
-    // 找等长闭合反引号序列
+    // 找等长闭合反引号序列 —— **只在同一行内找**。
+    // 本函数在 markdown-it 之前对整篇源文扫描，此刻还不知道块边界；
+    // 一旦允许跨行配对，正文里任何一个落单的反引号都会让其后所有配对整体错位，
+    // 拼出一个跨行的“代码跨度”。它若看起来像数学就会被改写成 $…$，
+    // 把下一行（甚至标题）吞进公式里，页面直接显示错乱（标题变长、目录出现乱条目）。
+    // 行内代码与 ``asciimath:`` 都是单行写法，限定单行不影响任何正常用法。
     let k = j;
     let closeIdx = -1;
-    while (k < n) {
+    while (k < n && text[k] !== '\n') {
       if (text[k] === '`') {
         let m = k;
         while (m < n && text[m] === '`') m += 1;
@@ -549,9 +554,10 @@ function convertBackticks(text, toLatex) {
       }
     }
     if (closeIdx < 0) {
-      // 未闭合：原样输出到结尾
-      out += text.slice(i);
-      break;
+      // 本行内没有等长闭合：这个反引号只是普通文本，原样输出并继续扫描后面
+      out += '`'.repeat(tickLen);
+      i = j;
+      continue;
     }
     const content = text.slice(j, closeIdx);
     const after = closeIdx + tickLen;

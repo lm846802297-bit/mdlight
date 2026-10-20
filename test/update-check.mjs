@@ -60,6 +60,11 @@ ok(ub.status === 200 && ub.json.ok === true,
 const app = await (await fetch(B + '/assets/app.js')).text();
 ok(app.includes('checkUpdate') && app.includes('/api/update-check') && app.includes('/api/bind'),
   '打包的 app.js 含 update/bind 逻辑');
+// 静默语义：开机自动检查不得弹任何提示（离线/无网时不许出现“检查更新失败”toast），
+// 右键菜单里的手动检查必须给反馈。见 ui/app.js checkUpdate(silent)。
+ok(app.includes('checkUpdate(true)'), '启动时的自动检查是静默的');
+ok(/if \(j\.error\) \{ if \(!silent\) toast/.test(app), '静默检查不弹“检查更新失败”');
+ok(app.includes('checkUpdate(false)'), '右键菜单的手动检查会给出提示');
 
 srv.kill(); await sleep(200); rmSync(dir, { recursive: true, force: true });
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
