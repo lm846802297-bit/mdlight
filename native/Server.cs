@@ -315,6 +315,44 @@ namespace Mdlight
                 return;
             }
 
+            // Self-update: check the latest release (GET) and download+apply (POST).
+            if (path == "/api/update-check")
+            {
+                var info = Updater.Check(TimeSpan.FromSeconds(8));
+                string json = "{\"ok\":true,\"hasUpdate\":" + (info.HasUpdate ? "true" : "false")
+                    + ",\"error\":" + (info.Error ? "true" : "false")
+                    + ",\"current\":\"" + Page.Version + "\""
+                    + ",\"latest\":" + Util.JsonStr(info.LatestVersion)
+                    + ",\"downloadUrl\":" + Util.JsonStr(info.DownloadUrl)
+                    + ",\"message\":" + Util.JsonStr(info.Message) + "}";
+                SendJson(res, json);
+                return;
+            }
+            if (path == "/api/update-apply" &&
+                string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                string dl = req.QueryString["url"];
+                string msg = Updater.DownloadAndApply(dl);
+                SendJson(res, "{\"ok\":true,\"message\":" + Util.JsonStr(msg) + "}");
+                return;
+            }
+
+            // .md file binding: install (default assoc + right-click) / unbind.
+            if (path == "/api/bind" &&
+                string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                string msg = Mdlight.Shell.Install();
+                SendJson(res, "{\"ok\":true,\"message\":" + Util.JsonStr(msg) + "}");
+                return;
+            }
+            if (path == "/api/unbind" &&
+                string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                string msg = Mdlight.Shell.Uninstall();
+                SendJson(res, "{\"ok\":true,\"message\":" + Util.JsonStr(msg) + "}");
+                return;
+            }
+
             if (path == "/api/save" &&
                 string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
             {

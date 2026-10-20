@@ -70,6 +70,8 @@ mdlight.exe                           无参数：弹出文件选择框（仅 ex
 | （右键菜单） | 任意位置右键打开快捷菜单：首项 🎨 **外观**（16 种皮肤模式 / 正文字体 / 字号 A±），往下是主题循环、目录、查找、双栏分屏、大纲脑图、源码视图、直接编辑、外部编辑器、打印、导出 CSV、导出 PDF、设置、语言切换 |
 | TeX 按钮 | 一键将 Markdown 导出为 LaTeX (.tex)，标题 → section、表格 → tabular、代码 → verbatim、公式通过、mermaid → 注释 |
 | ⇣PDF / ⇣TeX 按钮 | **一键导入** PDF 或 LaTeX 文件，自动转换成 Markdown 并立即打开为可编辑文档（`/api/import-md`） |
+| ⟳ 检查更新 | exe 打开时**后台自动检查更新**；发现新版本弹出提示，可一键下载并重启更新；亦可在右键菜单 →「检查更新」手动触发，或命令行 `mdlight.exe --update-check` |
+| 🔗 绑定 .md | exe 打开即可把 **`.md` 文件绑定到 mdlight**（双击 .md 默认用 mdlight 打开 + 右键「用 mdlight 打开」）；右键菜单随时绑定/解绑。绑定点在 HKCU，无需管理员 |
 | （自动） | **多格式公式**：同一份文档里 `$...$`（LaTeX）、`` `x^2+1` ``（AsciiMath）、`<math>…</math>`（MathML）三种数学写法全部渲染为 KaTeX 高质量公式 |
 | （自动） | ` ```mermaid ` 图表：仅当文档含图表时才下载引擎，且只取用到的类型 |
 
@@ -83,6 +85,12 @@ set MD_EDITOR=code --goto "{file}:{line}"
 
 `MDLIGHT_PICK=<path>` 仅用于自动化：让 `mdlight.exe` 的无参数启动跳过文件选择对话框，
 直接使用给定路径（路径不存在时等同于“用户取消”，安静退出 0）。
+
+**更新检查**：exe 默认查询 GitHub Releases（`https://api.github.com/repos/lm846802297-bit/mdlight/releases/latest`，
+需仓库公开）比较版本。可用环境变量或 `config.json`（`%APPDATA%\mdlight\config.json`）覆盖更新源：
+`MDLIGHT_UPDATE_URL` / config `updateUrl`（JSON 文档，含 `tag_name` 与 `assets[]` 的
+`browser_download_url`）、config `updateDownloadUrl` + `updateVersion`（直接静态下载地址 + 版本号）、
+config `updateCheckOnStart`（默认 true，改为 false 关闭启动自动检查）。
 
 **自定义外观**：把覆盖样式写进 `%APPDATA%\mdlight\custom.css` 或 md 文件旁的
 `custom.css`，保存即时热重载（导出时也会自动内联）。主题变量见 `ui/app.css` 开头的

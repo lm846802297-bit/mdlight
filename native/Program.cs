@@ -62,6 +62,7 @@ private static readonly string MutexName = "Globalmdlight-single-" +
             bool uninstall = false;
             bool unbind = false;
             bool settings = false;
+            bool updateCheck = false;
             int forcedPort = 0;
             bool help = false;
             bool version = false;
@@ -75,6 +76,8 @@ private static readonly string MutexName = "Globalmdlight-single-" +
                 else if (a == "--uninstall" || a == "-u") { uninstall = true; }
                 else if (a == "--unbind") { unbind = true; }
                 else if (a == "--settings") { settings = true; }
+                else if (a == "--update-check") { updateCheck = true; }
+                else if (a == "--check-update") { updateCheck = true; }
                 else if (a == "--export")
                 {
                     export = true;
@@ -111,6 +114,14 @@ private static readonly string MutexName = "Globalmdlight-single-" +
             // --settings stands alone: no document is opened, the dialog just
             // edits the shared config.json that every future window reads.
             if (settings) { Settings.Show(null); return 0; }
+            // --update-check: query the update source, print result, exit.
+            if (updateCheck)
+            {
+                var ui = Updater.Check(TimeSpan.FromSeconds(8));
+                WriteConsole(ui.Message + (ui.DownloadUrl != null && ui.HasUpdate
+                    ? "\n  下载: " + ui.DownloadUrl : ""));
+                return 0;
+            }
 
             // ---- single-instance + CLI hot-send ---------------------------------
             // If another mdlight window is already open, forward the file to it
@@ -513,6 +524,7 @@ private static readonly string MutexName = "Globalmdlight-single-" +
                 "  -u, --uninstall   卸载 .md 右键菜单 + 默认关联\n" +
                 "      --unbind      仅解除 .md 默认关联（保留右键菜单）\n" +
                 "      --settings    打开设置窗口\n" +
+                "      --update-check 检查更新（显示最新版本/下载地址）\n" +
                 "  -v, --version     显示版本\n" +
                 "  -h, --help        显示本帮助\n" +
                 "\n" +

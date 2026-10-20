@@ -989,6 +989,42 @@
       .catch(function () { toast(t('no-service', '无法联系 mdlight 服务')); });
   });
 
+  // ---- self-update + .md binding (native host only) --------------------------
+  // /api/update-check resolves on the native exe; on the Node server the route
+  // 404s and these helpers simply report "不可用" instead of breaking.
+  function checkUpdate(silent) {
+    fetch('/api/update-check', { cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (j) {
+        if (!j || !j.ok) { if (!silent) toast(t('update-unavailable', '检查更新仅在 exe 版可用')); return; }
+        if (j.error) { toast(j.message || t('update-err', '检查更新失败')); return; }
+        if (j.hasUpdate && j.downloadUrl) {
+          var doIt = confirm(j.message + '\n\n' + t('update-ask', '是否立即下载并更新？'));
+          if (doIt) {
+            toast(t('update-downloading', '正在下载更新…'));
+            fetch('/api/update-apply?url=' + encodeURIComponent(j.downloadUrl), { method: 'POST', body: '{}' })
+              .then(function (r) { return r.json().catch(function () { return {}; }); })
+              .then(function (r2) { toast((r2 && r2.message) || t('update-applied', '更新已开始，请稍候重启')); })
+              .catch(function () { toast(t('update-err', '更新失败')); });
+          }
+        } else {
+          toast(j.message || (t('uptodate', '已是最新版本') + ' v' + (j.current || '')));
+        }
+      })
+      .catch(function () { if (!silent) toast(t('update-unavailable', '检查更新仅在 exe 版可用')); });
+  }
+
+  function bindMdDialog() {
+    var action = confirm(t('bind-ask', '绑定 .md 文件到 mdlight（双击 .md 默认用 mdlight 打开）？\n\n确定=绑定   取消=解除绑定'));
+    var url = action ? '/api/bind' : '/api/unbind';
+    fetch(url, { method: 'POST', body: '{}' })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (j) { toast((j && j.message) || t('bind-done', '操作完成')); })
+      .catch(function () { toast(t('update-unavailable', '绑定仅在 exe 版可用')); });
+  }
+  // auto-check on launch (native only): quiet, only banners when an update exists
+  checkUpdate(true);
+
   // ---- language toggle (parity feature: zh-CN / en-US) ------------------------
   var langBtn = document.getElementById('mdl-btn-lang');
   if (langBtn) langBtn.addEventListener('click', function () {
@@ -1670,6 +1706,8 @@
     ctxMenu.appendChild(ctxItem('⚙', t('settings', '设置'), '', function () {
       var b = document.getElementById('mdl-btn-settings'); if (b) b.click();
     }, !live));
+    ctxMenu.appendChild(ctxItem('⟳', t('check-update', '检查更新'), '', function () { checkUpdate(true); }, !live));
+    ctxMenu.appendChild(ctxItem('🔗', t('bind-md', '绑定/解绑 .md'), '', function () { bindMdDialog(); }, !live));
     ctxMenu.appendChild(ctxItem('🌐', '中文 / English', '', function () {
       var b = document.getElementById('mdl-btn-lang'); if (b) b.click();
     }));
