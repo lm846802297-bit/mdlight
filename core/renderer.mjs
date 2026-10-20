@@ -180,6 +180,19 @@ export function makeRenderer(opts) {
   const headings = [];
   const slugSeen = new Map();
   let mermaidCount = 0;
+  // Per-render-pass KaTeX result cache: keyed by (display,signature) where
+  // signature folds the formula source + the active macro table. Many real
+  // papers repeat the same formula many times; katex.renderToString is pure,
+  // so the byte-identical HTML is reused instead of recomputed. Cleared at the
+  // start of every render() so a later document never sees stale macros.
+  const mathCache = new Map();
+  function mathCacheKey(display, src) {
+    let sig = (display ? 'd' : 'i') + '\u0000' + src;
+    if (macroTable.size) {
+      for (const [k, v] of macroTable) sig += '\u0001' + k + '\u0002' + v;
+    }
+    return sig;
+  }
 
   const md = new MarkdownIt({
     html: true,
@@ -373,15 +386,27 @@ export function makeRenderer(opts) {
     for (const k of Object.keys(docMacros)) macroTable.set(k, docMacros[k]);
     // definition-only block: suppress output entirely (no empty x-equation shell)
     if (Object.keys(docMacros).length > 0 && rest.trim() === '') return '';
-    const r = renderMath(t.content, true, macroTable);
-    return r.error ? mathErrorCard(r.src, r.message) : wrapEquation(r.html, true, t.content);
+    return renderMathCached(true, t.content, macroTable);
   };
   md.renderer.rules.mdl_math_inline = (tokens, idx) => {
     const t = tokens[idx];
     const display = !!(t.meta && t.meta.display);
-    const r = renderMath(t.content, display, macroTable);
-    return r.error ? mathErrorCard(r.src, r.message) : wrapEquation(r.html, display, t.content);
+    return renderMathCached(display, t.content, macroTable);
   };
+  // Layout helper shared by the two math rules: cache lookup then renderMath.
+  function renderMathCached(display, content, macroTable) {
+    const key = mathCacheKey(display, content);
+    const hit = mathCache.get(key);
+    if (hit) return hit;
+    const r = renderMath(content, display, macroTable);
+    const out = r.error ? mathErrorCard(r.src, r.message) : wrapEquation(r.html, display, content);
+    // cap the cache so adversarial docs (millions of unique formulas) can't
+    // grow it without bound; the RSS is proportional to unique formulas only
+    const max = 200000;
+    if (mathCache.size >= max) mathCache.clear();
+    mathCache.set(key, out);
+    return out;
+  }
   function wrapEquation(html, display, src) {
     // keep the markdown source in data-src so the WYSIWYG serializer can
     // round-trip a formula back to markdown after in-place editing
@@ -554,6 +579,7 @@ export function makeRenderer(opts) {
     md,
     render(src) {
       macroTable.clear();
+      mathCache.clear();
       headings.length = 0;
       slugSeen.clear();
       mermaidCount = 0;

@@ -334,6 +334,30 @@ body {
   margin: 0 auto;
   padding: 28px 40px 80px;
 }
+/*
+ * Content-visibility: the key to "large docs open fast". When a rendered
+ * document is many MB of DOM (tens of thousands of KaTeX nodes), the browser
+ * laying out + painting ALL of it in one pass freezes the tab for ~20s. These
+ * two lines defer layout/paint for off-screen top-level blocks and skip the
+ * render of those that scroll out, so only what's near the viewport is ever
+ * laid out — cutting the initial layout to the visible few blocks. This is
+ * native behaviour, so it cannot affect parity or content correctness.
+ */
+.mdl-content > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 46px;
+}
+/* .mdl-vblock wraps each block for very long docs; keep the same rules there. */
+.mdl-vblock {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 46px;
+}
+/* User-scroll to a KaTeX equation that was display:block and tall: reserve a
+ * little more headroom per equation so scrolled-in blocks don't jump as much. */
+.mdl-content > x-equation.mdl-eq--display,
+.mdl-vblock x-equation.mdl-eq--display {
+  contain-intrinsic-size: auto 120px;
+}
 
 /* ---- typography ---- */
 .mdl-content h1, .mdl-content h2, .mdl-content h3,

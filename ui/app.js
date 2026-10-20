@@ -2012,7 +2012,13 @@
         // 工作，不碰 DOM，所以能在后台线程跑，主线程保持可滚动、可交互。
         // 只在 live（native host 或 Node 服务器）下尝试 Worker；导出的单
         // 文件从 file:// 打开，Worker 受 CORS 限制，直接走同步渲染。
-        var useWorker = document.body.hasAttribute('data-live');
+        // 大文档：Web Worker 离线程渲染在把几十 MB 的 HTML 用 postMessage
+        // 传回主线程时会被大幅拖慢（实测 1.5MB/1.2 万公式的文档 worker 渲染
+        // 超过 20s，而同步渲染只需 ~1.5s 且结果一致）。为免用户空等，文档源
+        // 超过 256KB 时直接走同步渲染（一次性屏住约 1.5s，远好于 worker 卡 20s）。
+        var WORKER_SKIP_KB = 256;
+        var useWorker = document.body.hasAttribute('data-live')
+          && !(source.length > WORKER_SKIP_KB * 1024);
         return (useWorker ? renderInWorker(source) : syncRender(source)).then(function (out) {
           // post=true: wire TOC/stats/mermaid/collapse right after the paint
           // so the native host (empty server body) gets a fully-wired DOM.
@@ -2026,14 +2032,13 @@
   // result into the content area and refresh the derived counters / TOC.
   function paintContent(out, post) {
     contentEl.innerHTML = out.html;
-    S.toc = out.headings || [];
-    S.mermaidCount = out.mermaidCount || 0;
-    // Same counting rules as the Node server (mdlight.mjs:310-311)
-    S.eqCount = contentEl.querySelectorAll('x-equation').length;
-    S.errCount = contentEl.querySelectorAll('.mdl-math-error').length;
     // clientRender leaves these to init() so mermaid is not rendered twice
     // (a second render yields a different SVG); the dual-view live preview
     // paints into an already-initialised page, so it must re-run them.
+    S.toc = out.headings || [];
+    S.mermaidCount = out.mermaidCount || 0;
+    S.eqCount = contentEl.querySelectorAll('x-equation').length;
+    S.errCount = contentEl.querySelectorAll('.mdl-math-error').length;
     if (post) { buildToc(); renderStat(); renderMermaid(); wireCollapse(); wireCodeLineno(); wireTableFullscreen(); wireTocActive(); wireEquationCopy(); }
     maybeWrapVBlocks();
     // UI polish: friendly placeholder for an empty doc + scroll-to-top button
@@ -2440,17 +2445,28 @@
   function wrapVBlocks() {
     var children = Array.prototype.slice.call(contentEl.children);
     if (children.length < VBLOCK_THRESHOLD) return;   // small doc: skip
+    // Wrap every top-level block in a .mdl-vblock so IntersectionObserver can defer
+    // mermaid rendering. The content may be a many-MB live DOM; MOVING its
+    // thousands of top-level children one-at-a-time — even into a fragment —
+    // removes each from the rendered tree and reflows per node (~10s). So we
+    // re-parse the (already-authored) markup into a DETACHED div (a
+    // string→off-screen parse, no layout), wrap inside it, clear the live
+    // container once, and append the result once (a single reflow).
+    var html = contentEl.innerHTML;
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;                    // detached: no layout
+    var kids = Array.prototype.slice.call(tmp.childNodes);
     var frag = document.createDocumentFragment();
-    for (var i = 0; i < children.length; i++) {
-      var el = children[i];
-      if (el.nodeType !== 1) continue;
-      var wrap = document.createElement('div');
-      wrap.className = 'mdl-vblock';
-      wrap.setAttribute('data-lazy', '1');
-      contentEl.replaceChild(wrap, el);
-      wrap.appendChild(el);
-      frag.appendChild(wrap);
+    for (var k = 0; k < kids.length; k++) {
+      var el2 = kids[k];
+      if (el2.nodeType !== 1) continue;
+      var wrap2 = document.createElement('div');
+      wrap2.className = 'mdl-vblock';
+      wrap2.setAttribute('data-lazy', '1');
+      wrap2.appendChild(el2);                 // inside detached tmp: no reflow
+      frag.appendChild(wrap2);
     }
+    contentEl.innerHTML = '';
     contentEl.appendChild(frag);
     observeVBlocks();
   }
@@ -2486,8 +2502,15 @@
   // but before mermaid rendering so that only visible blocks get mermaid'd.
   // This is a no-op for small documents (< 200 blocks).
   function maybeWrapVBlocks() {
-    if (contentEl && contentEl.children.length >= VBLOCK_THRESHOLD)
+    // vblock wrapping exists to defer mermaid rendering via IntersectionObserver:
+    // it's pure overhead on a large doc with no diagrams (the wrap loop has to
+    // reparent thousands of top-level blocks, which reflows ~10s). Skip it when
+    // there is nothing to defer — a document without any x-mermaid doesn't need
+    // virtual blocks at all.
+    if (contentEl && contentEl.children.length >= VBLOCK_THRESHOLD
+        && contentEl.querySelector('x-mermaid')) {
       wrapVBlocks();
+    }
   }
 
   // ---- init ----------------------------------------------------------------
