@@ -2445,29 +2445,35 @@
   function wrapVBlocks() {
     var children = Array.prototype.slice.call(contentEl.children);
     if (children.length < VBLOCK_THRESHOLD) return;   // small doc: skip
-    // Wrap every top-level block in a .mdl-vblock so IntersectionObserver can defer
-    // mermaid rendering. The content may be a many-MB live DOM; MOVING its
-    // thousands of top-level children one-at-a-time — even into a fragment —
-    // removes each from the rendered tree and reflows per node (~10s). So we
-    // re-parse the (already-authored) markup into a DETACHED div (a
-    // string→off-screen parse, no layout), wrap inside it, clear the live
-    // container once, and append the result once (a single reflow).
-    var html = contentEl.innerHTML;
-    var tmp = document.createElement('div');
-    tmp.innerHTML = html;                    // detached: no layout
-    var kids = Array.prototype.slice.call(tmp.childNodes);
-    var frag = document.createDocumentFragment();
-    for (var k = 0; k < kids.length; k++) {
-      var el2 = kids[k];
-      if (el2.nodeType !== 1) continue;
-      var wrap2 = document.createElement('div');
-      wrap2.className = 'mdl-vblock';
-      wrap2.setAttribute('data-lazy', '1');
-      wrap2.appendChild(el2);                 // inside detached tmp: no reflow
-      frag.appendChild(wrap2);
+    // Wrap every top-level block in a .mdl-vblock so IntersectionObserver can
+    // defer mermaid rendering. MOVING each child out of the live contentEl —
+    // even into a fragment — removes it from the rendered tree and forces a
+    // full-page reflow per node (O(n²), ~10s on a 6000-block doc). Detach
+    // contentEl from the DOM once, wrap every child in place (no reflow while
+    // detached), then re-insert it at its ORIGINAL position (insertBefore the
+    // saved next sibling) so elements placed after it (e.g. the split-pane
+    // mdl-content-b) keep their order. This preserves node identity so any
+    // listeners already wired onto the blocks survive, and it is O(n).
+    var parent = contentEl.parentNode;
+    if (parent) {
+      var next = contentEl.nextSibling;
+      parent.removeChild(contentEl);          // detach: no layout
     }
-    contentEl.innerHTML = '';
-    contentEl.appendChild(frag);
+    try {
+      var frag = document.createDocumentFragment();
+      for (var i = 0; i < children.length; i++) {
+        var el = children[i];
+        if (el.nodeType !== 1) continue;                // text nodes stay in place
+        var wrap = document.createElement('div');
+        wrap.className = 'mdl-vblock';
+        wrap.setAttribute('data-lazy', '1');
+        wrap.appendChild(el);                           // move: el was in contentEl
+        frag.appendChild(wrap);
+      }
+      contentEl.appendChild(frag);
+    } finally {
+      if (parent) parent.insertBefore(contentEl, next); // re-insert at original spot
+    }
     observeVBlocks();
   }
 
