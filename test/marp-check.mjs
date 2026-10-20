@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { render } from '../core/renderer.mjs';
+import { exePath } from './_stage-exe.mjs';
 
 let pass = 0, fail = 0;
 const ok = (cond, label, extra) => {
@@ -63,7 +64,7 @@ ok(noFm.marp === undefined, '无 frontmatter → 不是幻灯片');
 // ---- Part 2: DOM via headless Edge -----------------------------------------
 console.log('\n[3] 端到端：native 宿主 + 无头 Edge');
 const root = process.cwd();
-const exe = join(root, 'dist', 'native', 'mdlight.exe');
+const exe = exePath(); // staged outside the sandboxed checkout — see _stage-exe.mjs
 const tmp = mkdtempSync(join(tmpdir(), 'marp-'));
 const fakeApp = join(tmp, 'app');
 const { mkdirSync } = await import('node:fs');

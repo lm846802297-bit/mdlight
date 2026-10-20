@@ -6,6 +6,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { exePath } from './_stage-exe.mjs';
 
 let pass = 0, fail = 0;
 const ok = (cond, label, extra) => {
@@ -14,7 +15,7 @@ const ok = (cond, label, extra) => {
 };
 
 const root = process.cwd();
-const exe = join(root, 'dist', 'native', 'mdlight.exe');
+const exe = exePath(); // staged outside the sandboxed checkout — see _stage-exe.mjs
 const tmp = mkdtempSync(join(tmpdir(), 'feat-'));
 const fakeApp = join(tmp, 'app');
 mkdirSync(fakeApp, { recursive: true });

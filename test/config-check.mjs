@@ -10,9 +10,10 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { exePath } from './_stage-exe.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const EXE = join(root, 'dist', 'native', 'mdlight.exe');
+const EXE = exePath(); // staged outside the sandboxed checkout — see _stage-exe.mjs
 let pass = 0, fail = 0;
 const ok = (c, l, e) => {
   if (c) { pass++; console.log('  ✓ ' + l); }

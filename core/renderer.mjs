@@ -175,8 +175,31 @@ function mathErrorCard(src, message) {
 
 const CALLOUT_KINDS = ['NOTE', 'TIP', 'INFO', 'IMPORTANT', 'WARNING', 'CAUTION', 'SUCCESS', 'QUESTION', 'EXAMPLE'];
 
+// Built-in macros seeded into every document's macro table, so they work
+// without the author writing \newcommand. A document's own
+// \newcommand{\slashed}… still wins: extractMacros() writes on top of the
+// seeded entry at render time.
+//
+//   \slashed — Feynman slash notation (\slashed{p}); it comes from the LaTeX
+//   `slashed` package, which KaTeX does not implement. \cancel is the closest
+//   KaTeX-core primitive: it is an enclose function bundled in katex 0.16 core
+//   (no extension needed — the `cancel` contrib package does not exist) and it
+//   draws one diagonal stroke from the bottom-left to the top-right of the
+//   argument box, i.e. exactly the slashed symbol. \not was the alternative,
+//   but it is a relation (\mathrel) so it injects 0.2778em relation spacing and
+//   its \mathrlap slash lands before the symbol instead of across it, which
+//   breaks the tight `\bar L \slashed k L` grouping these documents use.
+const BUILTIN_MACROS = { '\\slashed': '\\cancel' };
+
+/** (Re)seed the per-document macro table with the built-in macros. Idempotent;
+ *  called on construction and after every macroTable.clear(). */
+function seedBuiltinMacros(macroTable) {
+  for (const name of Object.keys(BUILTIN_MACROS)) macroTable.set(name, BUILTIN_MACROS[name]);
+}
+
 export function makeRenderer(opts) {
   const macroTable = new Map();
+  seedBuiltinMacros(macroTable);
   const headings = [];
   const slugSeen = new Map();
   let mermaidCount = 0;
@@ -230,6 +253,10 @@ export function makeRenderer(opts) {
       if (lt.endsWith('$$')) { closeLine = line; break; }
     }
     if (closeLine === -1) return false;
+    // markdown-it requires a block rule that returns true to advance
+    // state.line even in silent (validation) mode, otherwise it throws
+    // "block rule didn't increment state.line". Do it before the silent return.
+    state.line = closeLine + 1;
     if (silent) return true;
 
     const lines = [];
@@ -248,7 +275,6 @@ export function makeRenderer(opts) {
     token.content = lines.join('\n').trim();
     token.map = [startLine, closeLine + 1];
     token.meta = { display: true };
-    state.line = closeLine + 1;
     return true;
   });
 
@@ -281,6 +307,8 @@ export function makeRenderer(opts) {
       if (lt.endsWith('\\]')) { closeLine = line; break; }
     }
     if (closeLine === -1) return false;
+    // same silent-mode contract as the $$ rule above
+    state.line = closeLine + 1;
     if (silent) return true;
 
     const lines = [];
@@ -299,7 +327,6 @@ export function makeRenderer(opts) {
     token.content = lines.join('\n').trim();
     token.map = [startLine, closeLine + 1];
     token.meta = { display: true };
-    state.line = closeLine + 1;
     return true;
   });
 
@@ -320,11 +347,16 @@ export function makeRenderer(opts) {
       if (close === -1) return false;
       const inner = src.slice(pos + 2, close);
       if (inner.includes('\n\n')) return false;
+      // markdown-it requires every inline rule that returns true to advance
+      // state.pos in silent mode too (parser_inline.mjs:113 and :158 both throw
+      // "inline rule didn't increment state.pos"). Silent calls happen whenever
+      // another rule validates the stream via skipToken() — e.g. the link rule
+      // on "[text \(a\)](url)". Advance first, then guard only token emission.
+      state.pos = close + 2;
       if (silent) return true;
       const token = state.push('mdl_math_inline', '', 0);
       token.content = inner;
       token.meta = { display: false };
-      state.pos = close + 2;
       return true;
     }
     if (src.startsWith('\\[', pos)) {
@@ -332,15 +364,43 @@ export function makeRenderer(opts) {
       if (close === -1) return false;
       const inner = src.slice(pos + 2, close);
       if (inner.includes('\n\n')) return false;
+      state.pos = close + 2;
       if (silent) return true;
       const token = state.push('mdl_math_inline', '', 0);
       token.content = inner;
       token.meta = { display: true };
-      state.pos = close + 2;
       return true;
     }
     return false;
   });
+
+  // An inline $…$ span must pair STRICTLY. An unpaired $ — an author typo (\) written
+  // where $ was meant), a currency amount, a stray space — used to pair with the NEXT $
+  // far away and swallow a whole slice of Chinese prose into one giant 公式渲染失败 card.
+  // Failing to pair is now a LITERAL fallback: the $ stays text. Never an error card.
+  // CJK prose inside $…$ is a SUPPORTED feature ("中文夹心": CJK runs are auto-wrapped
+  // in \text{…}), so plain CJK must NOT disqualify a span. What marks a span as swallowed
+  // prose is CJK SENTENCE PUNCTUATION at brace depth 0 — real math never contains "。，；".
+  const CJK_PUNCT = /[\u3002\uff01\uff1f\uff1b\uff0c\u3001\uff1a\u2026]/;
+  // Escapes are skipped so \{ \} \text are not miscounted; punctuation inside \text{…} is fine.
+  function proseAtTopLevel(s) {
+    let depth = 0;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '\\') { i++; continue; }
+      if (ch === '{') { depth++; continue; }
+      if (ch === '}') { if (depth > 0) depth--; continue; }
+      if (depth === 0 && CJK_PUNCT.test(ch)) return true;
+    }
+    return false;
+  }
+  // May the text between two $ really be math?
+  function isStrictInlineMath(content) {
+    if (content.includes('$') || content.includes('`')) return false; // raw delimiters inside
+    if (content.includes('\n')) return false;                        // must close on the same line
+    if (proseAtTopLevel(content)) return false;                      // swallowed prose, not math
+    return true;
+  }
 
   md.inline.ruler.before('emphasis', 'mdl_math', function mdlMathInline(state, silent) {
     const src = state.src;
@@ -352,30 +412,39 @@ export function makeRenderer(opts) {
       if (close === -1) return false;
       const inner = src.slice(pos + 2, close);
       if (inner.includes('\n\n')) return false;
+      state.pos = close + 2;
       if (silent) return true;
       const token = state.push('mdl_math_inline', '', 0);
       token.content = inner;
       token.meta = { display: true };
-      state.pos = close + 2;
       return true;
     }
 
+    // A space right after the opener is allowed — authors write "$ (m_i^2+m_j^2-p^2)B_0/2$".
+    // The strict content test, not the spacing, is what keeps prose out.
     const next = src[pos + 1];
-    if (next === undefined || /\s/.test(next) || next === '$') return false;
+    if (next === undefined || next === '$') return false;
+    // "costs 5$ to 10$" — a $ glued to the END of a number is a currency suffix, never an
+    // opener; without this it would pair with the later 10$ and turn the price into math.
+    if (/[0-9]/.test(src[pos - 1] ?? '')) return false;
     let close = -1;
-    for (let j = pos + 2; j < src.length; j++) {
-      if (src[j] === '\n' && src[j + 1] === '\n') break; // paragraph boundary
-      if (src[j] === '$' && !/\s/.test(src[j - 1]) && !/[0-9]/.test(src[j + 1] ?? '')) {
-        close = j;
-        break;
-      }
+    for (let j = pos + 1; j < src.length; j++) {
+      const ch = src[j];
+      if (ch === '\n') break;                       // no closer on another line
+      if (ch !== '$') continue;
+      if (src[j + 1] === '$') continue;             // leave $$ to the display branch
+      if (/\s/.test(src[j - 1])) continue;          // the closer must hug its content
+      if (/[0-9]/.test(src[j + 1] ?? '')) continue; // "$100 … $10" is currency, not math
+      if (!isStrictInlineMath(src.slice(pos + 1, j))) continue;
+      close = j;
+      break;
     }
-    if (close === -1) return false;
+    if (close === -1) return false;                 // unpaired → literal $, never a card
+    state.pos = close + 1;
     if (silent) return true;
     const token = state.push('mdl_math_inline', '', 0);
     token.content = src.slice(pos + 1, close);
     token.meta = { display: false };
-    state.pos = close + 1;
     return true;
   });
 
@@ -393,8 +462,31 @@ export function makeRenderer(opts) {
     const display = !!(t.meta && t.meta.display);
     return renderMathCached(display, t.content, macroTable);
   };
+  // Real-world physics docs are often mangled by a converter that ate the backslash of a
+  // TeX escape: "\begin" -> 0x08 + "egin", "\frac" -> 0x0C + "rac", "\to" -> 0x09 + "o".
+  // A raw C0 control char is never valid TeX, so restoring the escape it replaced can only
+  // help. 0x0A/0x0D are left alone: they are real line structure (and CRLF line endings).
+  const CTRL_TO_TEX = { '\x07': '\\a', '\b': '\\b', '\t': '\\t', '\v': '\\v', '\f': '\\f' };
+  function repairLostEscapes(src) {
+    if (typeof src !== 'string') return src;
+    if (!/[\x07\b\t\v\f]/.test(src)) return src;
+    return src.replace(/[\x07\b\t\v\f]/g, (c) => CTRL_TO_TEX[c]);
+  }
+
+  // Inside a math region a backtick is literal math text, not markdown code. Documents
+  // exported from pandoc wrap EVERY command as `\cmd`{=tex}; KaTeX would reject the
+  // backticks. Unwrap them (and the {=tex} marker) so those formulas render.
+  function normalizeMathContent(src) {
+    src = repairLostEscapes(src);
+    if (typeof src !== 'string' || src.indexOf('`') === -1) return src;
+    return src
+      .replace(/`([^`]*)`\s*\{=\s*tex\}/g, '$1')
+      .replace(/`([^`]*)`/g, '$1');
+  }
+
   // Layout helper shared by the two math rules: cache lookup then renderMath.
   function renderMathCached(display, content, macroTable) {
+    content = normalizeMathContent(content);
     const key = mathCacheKey(display, content);
     const hit = mathCache.get(key);
     if (hit) return hit;
@@ -456,14 +548,52 @@ export function makeRenderer(opts) {
     const target = (bar === -1 ? inner : inner.slice(0, bar)).trim();
     const label = (bar === -1 ? inner : inner.slice(bar + 1)).trim();
     if (!target) return false;
+    state.pos = close + 2;
     if (silent) return true;
     const token = state.push('html_inline', '', 0);
     token.content = '<a class="mdl-wikilink" data-wikilink="'
       + escapeHtml(target) + '" title="Ctrl+点击复制 [[target]] 语法">'
       + escapeHtml(label || target) + '</a>';
-    state.pos = close + 2;
     return true;
   });
+
+  // ---- inline: ~sub~, ++insert++, ==mark== ----------------------------------
+  // NOTE: 上标 ^x^ is deliberately NOT implemented. In real physics documents "^" is
+  // an ordinary superscript character inside prose ("(p^2=m_h^2)", "10^-5"), so a
+  // "^…^" delimiter would corrupt it — measured 32 such pairs in the sample corpus.
+  // Superscripts stay the job of math mode: $x^2$. See DESIGN.md.
+  //
+  // The content guard is what makes these safe on ordinary prose: a span only becomes
+  // a token when its body is short, has no whitespace/CJK, and contains none of the
+  // delimiters or inline-HTML punctuation that would signal real text.
+  function isInlineMarkContent(content, marker) {
+    if (!content || content.length > 40) return false;
+    if (/[\s\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(content)) return false;
+    if (/[\\<>|=`^[\]()]/.test(content)) return false;
+    if (content.includes(marker[0])) return false;
+    return true;
+  }
+  function defineInlineMark(name, marker, tag, cls) {
+    md.inline.ruler.before('emphasis', name, function (state, silent) {
+      const src = state.src;
+      const pos = state.pos;
+      if (!src.startsWith(marker, pos)) return false;
+      const start = pos + marker.length;
+      const end = src.indexOf(marker, start);
+      if (end === -1) return false;
+      const content = src.slice(start, end);
+      if (!isInlineMarkContent(content, marker)) return false;
+      state.pos = end + marker.length;
+      if (silent) return true;
+      const token = state.push('html_inline', '', 0);
+      token.content = '<' + tag + ' class="' + cls + '">' + escapeHtml(content) + '</' + tag + '>';
+      return true;
+    });
+  }
+  // Assigned after the strikethrough rule so ~~x~~ still wins for the double tilde.
+  defineInlineMark('mdl_sub', '~', 'sub', 'mdl-sub');
+  defineInlineMark('mdl_ins', '++', 'ins', 'mdl-ins');
+  defineInlineMark('mdl_mark', '==', 'mark', 'mdl-mark');
 
   // ---- core pass 1: callouts from blockquote tokens ---------------------------
   md.core.ruler.after('block', 'mdl_callout', function mdlCallout(state) {
@@ -579,6 +709,7 @@ export function makeRenderer(opts) {
     md,
     render(src) {
       macroTable.clear();
+      seedBuiltinMacros(macroTable);
       mathCache.clear();
       headings.length = 0;
       slugSeen.clear();

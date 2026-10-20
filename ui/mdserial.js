@@ -54,6 +54,7 @@
       }
       case 'sub': return '~' + kids + '~';
       case 'sup': return '^' + kids + '^';
+      case 'ins': return '++' + kids + '++';
       case 'mark': return '==' + kids + '==';
       case 'input':
         // task checkbox (disabled in render, re-enabled while editing)

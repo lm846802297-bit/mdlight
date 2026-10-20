@@ -11,11 +11,12 @@ import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync } from 'node:
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { exePath } from './_stage-exe.mjs';
 import { dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const EXE = join(root, 'dist', 'native', 'mdlight.exe');
+const EXE = exePath(); // staged outside the sandboxed checkout — see _stage-exe.mjs
 let pass = 0, fail = 0;
 const ok = (c, l, e) => {
   if (c) { pass++; console.log('  ✓ ' + l); }

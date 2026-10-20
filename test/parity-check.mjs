@@ -6,7 +6,7 @@
 // Both pages are read through the same headless browser, so serialisation
 // differences cannot create false results.
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -91,8 +91,16 @@ const nodeEnv = { ...process.env, MDLIGHT_CONFIG_DIR: cfgDir };
 
 const nodeSrv = spawn(process.execPath, [join(root, 'mdlight.mjs'), docPath,
   '--port', String(NODE_PORT), '--no-window'], { cwd: root, stdio: 'ignore', windowsHide: true, env: nodeEnv });
-const exeSrv = spawn(EXE, [docPath, '--port', String(EXE_PORT), '--no-window'],
-  { cwd: root, stdio: 'ignore', windowsHide: true, env: nodeEnv });
+// Run the exe from a COPY outside the project tree. A Windows sandbox can carry
+// a low-integrity ACL / mandatory label on a checkout directory, and an exe
+// started from such a directory inherits a restricted token: HttpListener then
+// throws PlatformNotSupportedException and every AppData write is denied, which
+// looks exactly like a renderer bug. The exe is single-file and self-contained,
+// so a plain copy runs identically from os.tmpdir().
+const EXE_RUN = join(dir, 'mdlight.exe');
+try { copyFileSync(EXE, EXE_RUN); } catch (e) { /* fall back to the original path */ }
+const exeSrv = spawn(existsSync(EXE_RUN) ? EXE_RUN : EXE, [docPath, '--port', String(EXE_PORT), '--no-window'],
+  { cwd: dir, stdio: 'ignore', windowsHide: true, env: nodeEnv });
 await sleep(2500);
 
 const edge = spawn(EDGE, [

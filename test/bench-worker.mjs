@@ -2,12 +2,14 @@
 // the main thread must stay responsive (rAF keeps hitting 60fps), and the final
 // HTML must be identical to a synchronous render.
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+import { exePath } from './_stage-exe.mjs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { mkdirSync, rmSync } from 'node:fs';
 
 const edge = process.env['ProgramFiles(x86)'] + '\\Microsoft\\Edge\\Application\\msedge.exe';
 // unique per-run profile so a lingering previous Edge never blocks a fresh one
-const prof = 'C:\\Users\\84680\\Desktop\\AI赚钱\\mdlight\\.edge-prof-' + Date.now();
+const prof = join(process.cwd(), '.edge-prof-' + Date.now());
 function httpGetJson(u) { return fetch(u).then((r) => r.json()); }
 async function cdpTarget(cdpPort) {
   for (let i = 0; i < 50; i++) { try { return (await httpGetJson(`http://127.0.0.1:${cdpPort}/json`)).find((t) => t.type === 'page'); } catch (e) { await sleep(300); } }
@@ -31,7 +33,7 @@ const edgeProc = spawn(edge, ['--headless=new', '--disable-gpu', '--no-first-run
 edgeProc.unref();
 
 async function run(doc, docSizeLabel) {
-  const hostProc = spawn('C:\\Users\\84680\\Desktop\\AI赚钱\\mdlight\\dist\\native\\mdlight.exe', [doc, '--port', String(port), '--no-window'], { detached: true, stdio: 'ignore' });
+  const hostProc = spawn(exePath(), [doc, '--port', String(port), '--no-window'], { detached: true, stdio: 'ignore' });
   hostProc.unref();
   await sleep(1500);
   const target = await cdpTarget(cdpPort);

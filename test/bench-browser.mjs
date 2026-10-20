@@ -1,13 +1,15 @@
 // Measure browser-side render cost on the big doc, through the native host.
 // Uses the same CDP-over-WebSocket plumbing as native-check.mjs.
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+import { exePath } from './_stage-exe.mjs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 
 const port = 20200;
 const cdpPort = 20201;
 const edge = process.env['ProgramFiles(x86)'] + '\\Microsoft\\Edge\\Application\\msedge.exe';
-const prof = 'C:\\Users\\84680\\Desktop\\AI赚钱\\mdlight\\.edge-prof';
+const prof = join(process.cwd(), '.edge-prof');
 
 function httpGetJson(url) {
   return fetch(url).then((r) => r.json());
@@ -57,7 +59,7 @@ const edgeProc = spawn(edge, [
 edgeProc.unref();
 
 // start native host
-const hostProc = spawn('C:\\Users\\84680\\Desktop\\AI赚钱\\mdlight\\dist\\native\\mdlight.exe',
+const hostProc = spawn(exePath(),
   [process.argv[2] || 'bench-big.md', '--port', String(port), '--no-window'], { detached: true, stdio: 'ignore' });
 hostProc.unref();
 await sleep(1500);

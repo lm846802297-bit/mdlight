@@ -130,7 +130,7 @@ config `updateCheckOnStart`（默认 true，改为 false 关闭启动自动检�
 另附原生能力：显示/行内公式、**AI 方言定界符 `\(...\)` / `\[...\]`**（ChatGPT/Claude/Pandoc
 的输出即贴即渲染，两种方言自由混用）、**AsciiMath**（`` `x^2+1` `` 反引号数学）、**MathML**
 （`<math>…</math>`，含 display block、分数/上下标/根号等基础结构）、mhchem 化学式、`\newcommand` 宏（含带参数宏）、callout（6 类）、
-任务列表、`[[双链]]`（点击复制语法）、表格对齐、TOC（滚动高亮）、行号定位（F2）、
+任务列表、**行内标记语法**（下标 `~x~`、插入 `++x++`、`==高亮==`、删除线 `~~x~~`，序列化器可双向往返）、`[[双链]]`（点击复制语法）、表格对齐、TOC（滚动高亮）、行号定位（F2）、
 **源码视图（Ctrl+E，编辑态里的源码切换）**、**直接编辑（Ctrl+Shift+E，所见即所得）**、
 **按需 mermaid 图表**、**PPT 演示模式（Marp，F5）**、
 **导出 PDF / LaTeX**、**一键导入 PDF / LaTeX → Markdown**（`/api/import-md`）、

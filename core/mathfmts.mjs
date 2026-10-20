@@ -350,6 +350,51 @@ const CODE_MARKERS = /;|=>|->|::|\/\/|\/\*|#[a-z]|```|\$\{/;
 // 文件/路径/带扩展名的标识符 → 视为代码
 const CODE_PATHISH = /(?:\/|\.[a-zA-Z0-9]{1,6}$)/;
 
+// 确凿的“非公式”信号：这些写法在 AsciiMath 语法里没有意义，却大量出现在
+// 普通行内代码 / 命令行 / 路径里。命中即保持代码 —— 宁可漏转一个公式，
+// 也绝不能把作者的代码送进 KaTeX，渲染成“公式渲染失败”卡片。
+const NOT_MATH_SIGNALS = [
+  /&/,                            // shell 连接符 / 逻辑与（AsciiMath 无 &）
+  /\|\|/,                         // shell / 逻辑或
+  /;/,                            // 语句分隔符
+  /--/,                           // 命令行选项
+  /\+\+/,                         // C/JS 自增（AsciiMath 无 ++ 语法）
+  /\$/,                           // 已有 LaTeX 内联符 / shell 变量
+  /[\\]\(|[\\]\)|[\\]\[|[\\]\]/,  // LaTeX 定界符 \( \) \[ \]
+  // 整个内容就是一个“裸宏名”（\bar \mathcal \frac \sqrt \s \n …）：缺参数、
+  // 不是完整表达式，KaTeX 必报 "expected '}'" / "Undefined control sequence"。
+  // 注意只拒“整个内容就是宏名”这一种；`\bar{L}` `\mathrm{Tr}` `\slashed k`
+  // `\frac{a}{b}` 是完整表达式，仍须按公式处理。
+  /^\\[A-Za-z]+$/,
+  /[A-Za-z]:[\\/]/,               // Windows 盘符路径 C:\ 或 C:/
+  /"/,                            // 命令行参数 / 路径里的引号
+  /^[\^_]/,                       // 以 ^ 或 _ 开头：缺少基底
+  /[\^_]\s*[\^_]/,                // 连续上 / 下标算子（x^^2）
+  /\^\s*[0-9A-Za-z]\s*\^/,        // 同一基底重复上标（a^b^c）
+  /_\s*[0-9A-Za-z]\s*_/,          // 同一基底重复下标
+  /\^\s*\{[^{}]*\}\s*\^/,         // 同一基底重复上标（a^{b}^{c}）
+  /_\s*\{[^{}]*\}\s*_/,           // 同一基底重复下标
+  // 英文散文：相邻两个纯字母单词（如 `Undefined control sequence: \badcommand`、
+  // `npm run build`）。AsciiMath 表达式不会长成这样（`sum_(i=1)^n i`、
+  // `\slashed k`、`sin x` 都不命中），作者写这类内容必然是行内代码或文档文字。
+  /\b[A-Za-z]{2,}\s+[A-Za-z]{2,}\b/,
+];
+
+// 明确的独立数学记号：希腊字母名（`alpha` `pi` …）。这些词本来被
+// isPlainCode 的“纯标识符”规则保护，但作为反引号内容时作者几乎必然
+// 是指数学符号。刻意不含 int/sum/log/sin 等易与代码标识符混淆的词。
+const MATH_WORD_ONLY = /^(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|oo|infty)$/;
+// 最简分数 a/b、12/5：两侧只能是单个字母或纯数字，避免 `and/or` 之类被误判
+const SIMPLE_FRACTION = /^(?:[0-9]+|[A-Za-z])\s*\/\s*(?:[0-9]+|[A-Za-z])$/;
+
+/** 命中任一“确凿代码”信号即为行内代码，绝不转公式 */
+function isDefinitelyCode(t) {
+  for (const re of NOT_MATH_SIGNALS) {
+    if (re.test(t)) return true;
+  }
+  return false;
+}
+
 function isPlainCode(content) {
   const t = content.trim();
   if (!t) return false;
@@ -365,6 +410,11 @@ function isPlainCode(content) {
 function looksLikeMath(content) {
   const t = content.trim();
   if (!t) return false;
+  // 1) 确凿的代码信号优先：宁可保留代码，也不冒险送进 KaTeX
+  if (isDefinitelyCode(t)) return false;
+  // 2) 明确的独立数学记号（希腊字母名 / 最简分数）直接判为公式
+  if (MATH_WORD_ONLY.test(t) || SIMPLE_FRACTION.test(t)) return true;
+  // 3) 其余沿用原有规则
   if (isPlainCode(t)) return false;
   // LaTeX 定界符 / $ 兜底：反引号内容只要含 `\(` `\)` `\[` `\]` 或 `$`，
   // 就绝不会是 asciimath —— 一律原样保留，避免把 LaTeX 样式的行内代码误转成公式。
@@ -432,6 +482,41 @@ async function getAmConverter() {
 }
 
 /**
+ * 转换产物结构自检：明显会被 KaTeX 拒绝的 LaTeX 一律不用（退回代码）。
+ * 只做结构性判断（不依赖 KaTeX、不解析完整语法），宁严勿松 —— 这是
+ * “反引号代码永不产生公式渲染失败卡片”的最后一道闸。
+ */
+export function latexLooksBroken(latex) {
+  const s = String(latex == null ? '' : latex).trim();
+  if (!s) return true;
+  if (/^[\^_]/.test(s)) return true;                // 缺基底：^x / _x
+  if (/[\^_]\s*[\^_]/.test(s)) return true;         // 连续算子：x^^2
+  if (/[\^_]\s*$/.test(s)) return true;             // 缺上/下标内容：x^
+  if (/\^\s*\{[^{}]*\}\s*\^/.test(s)) return true;  // 重复上标：a^{b}^{c}
+  if (/_\s*\{[^{}]*\}\s*_/.test(s)) return true;    // 重复下标
+  if (/\^\s*[0-9A-Za-z]\s*\^/.test(s)) return true; // 重复上标：a^b^c
+  if (/_\s*[0-9A-Za-z]\s*_/.test(s)) return true;   // 重复下标
+  // 上/下标的操作数是“裸控制字”（x^\max）：KaTeX 报 "Got function '\max' with no
+  // arguments as superscript"。asciimath 转换器对正常写法会补上花括号（x^{\max}）。
+  if (/[\^_]\s*\\[A-Za-z]/.test(s)) return true;
+  // 上/下标组里出现 \\（换行控制符）：转换器把源码里的单反斜杠转义成了双反斜杠，
+  // 形如 `U_A(1)_{L_\mu-L_\tau}` → U_{A}(1)_{L_\\mu-L_\\tau}，KaTeX 必报错。
+  if (/[\^_]\s*\{[^{}]*\\\\/.test(s)) return true;
+  // 花括号必须成对（跳过转义字符 \{ \}）
+  let depth = 0;
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (c === '\\') { i += 1; continue; }
+    if (c === '{') depth += 1;
+    else if (c === '}') {
+      depth -= 1;
+      if (depth < 0) return true;
+    }
+  }
+  return depth !== 0;
+}
+
+/**
  * 扫描反引号，把“是数学”的内联代码转成 $..$；块级 ``asciimath:...`` 转成 $$..$$。
  * @param {string} text  已保护代码块、已转完 MathML 的文本
  * @param {(s:string)=>string} toLatex  已解析好的 asciimath->LaTeX 转换器
@@ -484,7 +569,9 @@ function convertBackticks(text, toLatex) {
       }
     } else if (tickLen === 1 && looksLikeMath(content)) {
       try {
-        replacement = '$' + toLatex(content.trim()) + '$';
+        const latex = toLatex(content.trim());
+        // 最后一道闸：产物结构非法时退回代码，绝不让 KaTeX 报错
+        if (!latexLooksBroken(latex)) replacement = '$' + latex + '$';
       } catch (e) {
         replacement = null;
       }
@@ -492,12 +579,37 @@ function convertBackticks(text, toLatex) {
 
     if (replacement !== null) {
       out += replacement;
+      // pandoc 原生内联 TeX：`\cmd`{=tex} —— 既然已当成公式，就把紧随其后的
+      // {=tex} 标记一并吃掉，否则它会作为字面文字留在正文里。
+      const marker = text.slice(after).match(/^\{=\s*tex\}/);
+      if (marker) i = after + marker[0].length;
+      else i = after;
     } else {
       // 非数学内容原样保留
       out += '`'.repeat(tickLen) + content + '`'.repeat(tickLen);
+      i = after;
     }
-    i = after;
   }
+  return out;
+}
+
+/* 已经是数学的区域：$$…$$ / \[…\] / \(…\) / $…$。
+ * 在这些区域里反引号是数学文本本身（例如 pandoc 的 `…`{=tex} 原生内联），
+ * 若仍按 AsciiMath 规则改写成 $…$，就会在数学里产生嵌套的 $，
+ * 让整段公式变成 "Can't use function '$'" 错误卡片。 */
+const MATH_REGION = /\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]*\$/g;
+
+function convertBackticksOutsideMath(text, toLatex) {
+  let out = '';
+  let last = 0;
+  MATH_REGION.lastIndex = 0;
+  let m;
+  while ((m = MATH_REGION.exec(text)) !== null) {
+    out += convertBackticks(text.slice(last, m.index), toLatex);
+    out += m[0];
+    last = m.index + m[0].length;
+  }
+  out += convertBackticks(text.slice(last), toLatex);
   return out;
 }
 
@@ -515,7 +627,7 @@ export function preprocessMathSync(src) {
   if (typeof src !== 'string') return String(src ?? '');
   const protected_ = protectFenced(src);
   const noMathML = convertMathMLPass(protected_.text);
-  const withAm = convertBackticks(noMathML, asciimathInlineFallback);
+  const withAm = convertBackticksOutsideMath(noMathML, asciimathInlineFallback);
   return restoreFenced(withAm, protected_.store);
 }
 
@@ -537,7 +649,7 @@ export async function preprocessMath(src) {
     // 拿到 asciimath-to-latex 库：走完整流水线（就地转换）
     const protected_ = protectFenced(src);
     const noMathML = convertMathMLPass(protected_.text);
-    const withAm = convertBackticks(noMathML, toLatex);
+    const withAm = convertBackticksOutsideMath(noMathML, toLatex);
     return restoreFenced(withAm, protected_.store);
   }
   // 库不可用：委托同步入口（内置子集）

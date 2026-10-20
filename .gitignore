@@ -33,6 +33,9 @@ config.json
 Thumbs.db
 desktop.ini
 
+# internal audit artifacts (verification runs, not part of the shipped test suite)
+test/_verify/
+
 # scratch/debug probe scripts (not shipped, dev-only)
 tools/exe-probe*.mjs
 tools/exe-live.mjs

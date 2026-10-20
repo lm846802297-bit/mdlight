@@ -1,13 +1,15 @@
 // Verify progressive render: on a huge doc, the raw markdown <pre> should be
 // visible before the KaTeX pipeline finishes (no blank page).
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+import { exePath } from './_stage-exe.mjs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { mkdirSync, rmSync } from 'node:fs';
 
 const doc = process.argv[2] || 'bench-extreme.md';
 const port = 20230, cdpPort = 20231;
 const edge = process.env['ProgramFiles(x86)'] + '\\Microsoft\\Edge\\Application\\msedge.exe';
-const prof = 'C:\\Users\\84680\\Desktop\\AI赚钱\\mdlight\\.edge-prof';
+const prof = join(process.cwd(), '.edge-prof');
 function httpGetJson(u) { return fetch(u).then((r) => r.json()); }
 async function cdpTarget() {
   for (let i = 0; i < 50; i++) { try { return (await httpGetJson(`http://127.0.0.1:${cdpPort}/json`)).find((t) => t.type === 'page'); } catch (e) { await sleep(300); } }
@@ -26,7 +28,7 @@ async function evalJs(client, expr) {
 rmSync(prof, { recursive: true, force: true }); mkdirSync(prof, { recursive: true });
 const edgeProc = spawn(edge, ['--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions', '--user-data-dir=' + prof, `--remote-debugging-port=${cdpPort}`, 'about:blank'], { detached: true, stdio: 'ignore' });
 edgeProc.unref();
-const hostProc = spawn('C:\\Users\\84680\\Desktop\\AI赚钱\\mdlight\\dist\\native\\mdlight.exe', [doc, '--port', String(port), '--no-window'], { detached: true, stdio: 'ignore' });
+const hostProc = spawn(exePath(), [doc, '--port', String(port), '--no-window'], { detached: true, stdio: 'ignore' });
 hostProc.unref();
 await sleep(1500);
 const target = await cdpTarget();

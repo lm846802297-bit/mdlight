@@ -14,9 +14,10 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { writeFileSync, existsSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { exePath } from './_stage-exe.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const EXE = join(root, 'dist', 'native', 'mdlight.exe');
+const EXE = exePath(); // staged outside the sandboxed checkout — see _stage-exe.mjs
 const EDGE = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
