@@ -32,10 +32,13 @@ async function api(p, opts) {
   } catch (e) { return { status: 0, json: {}, error: String(e && e.message || e) }; }
 }
 
-// update-check: returns ok + current version, plus hasUpdate/error flags
+// update-check: returns ok + current version (derive from package.json)
+import { readFileSync } from 'node:fs';
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+const CUR = pkg.version || '0.9.1';
 const uc = await api('/api/update-check');
-ok(uc.status === 200 && uc.json.ok === true && uc.json.current === '0.9.0',
-  '/api/update-check 返回 ok + current=0.9.0' + (uc.error ? '  (' + uc.error + ')' : ''));
+ok(uc.status === 200 && uc.json.ok === true && uc.json.current === CUR,
+  '/api/update-check 返回 ok + current=' + CUR);
 ok(typeof uc.json.hasUpdate === 'boolean' && typeof uc.json.error === 'boolean',
   '/api/update-check 含 hasUpdate/error 布尔标志');
 

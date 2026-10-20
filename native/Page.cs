@@ -15,7 +15,7 @@ namespace Mdlight
     /// </summary>
     internal static class Page
     {
-        public const string Version = "0.9.0";
+        public const string Version = "0.9.1";
 
         public static string Build(Doc doc)
         {
