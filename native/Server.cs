@@ -247,7 +247,7 @@ namespace Mdlight
                 return;
             }
 
-            if (path == "/api/doc")
+            if (path == "/api/doc" && string.IsNullOrEmpty(req.QueryString["path"]))
             {
                 string src;
                 try { src = doc.ReadSource(); }
@@ -263,13 +263,9 @@ namespace Mdlight
                 return;
             }
             // GET /api/doc?path=<abs> — read a second document for the split view
-            if (path.StartsWith("/api/doc?", StringComparison.Ordinal))
+            if (path == "/api/doc" && !string.IsNullOrEmpty(req.QueryString["path"]))
             {
-                string q = path.Substring("/api/doc?".Length);
-                string p = null;
-                int pi = q.IndexOf("path=");
-                if (pi >= 0)
-                    p = Uri.UnescapeDataString(q.Substring(pi + 5).Split('&')[0]);
+                string p = req.QueryString["path"];
                 if (p == null || !System.IO.File.Exists(p))
                 {
                     SendJson(res, "{\"ok\":false,\"error\":\"not found\"}");
