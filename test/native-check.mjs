@@ -45,6 +45,7 @@ if (!EDGE) { console.log('Edge 未找到 — 跳过'); process.exit(0); }
 const dir = mkdtempSync(join(tmpdir(), 'mdl-native-'));
 const docPath = join(dir, 'native.md');
 const outHtml = join(dir, 'native.html');
+const secondDocPath = join(dir, 'second.md');
 const PORT = 20170, CDP = 19260;
 
 const FIXTURE = [
@@ -69,6 +70,7 @@ const FIXTURE = [
   '',
 ].join('\n');
 writeFileSync(docPath, FIXTURE);
+writeFileSync(secondDocPath, '# 第二份文档\n');
 
 // a 1x1 PNG so the export's image inlining has something to do
 const PNG = Buffer.from(
@@ -215,6 +217,9 @@ try {
 
   // ---- [2] built-in source editor contract ----------------------------
   console.log('\n[2] 内置编辑器接口');
+  const second = await (await fetch(BASE + '/api/doc?path=' + encodeURIComponent(secondDocPath))).json();
+  ok(second.ok && second.source.includes('第二份文档') && second.path === secondDocPath,
+    'GET /api/doc?path=... 正确读取分屏文档', JSON.stringify(second));
   const src = await (await fetch(BASE + '/api/source')).json();
   ok(src.ok && typeof src.sha === 'string' && src.sha.length === 64,
     'GET /api/source 返回 64 位 sha');
