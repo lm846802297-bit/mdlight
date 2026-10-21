@@ -275,7 +275,7 @@ namespace Mdlight
                 {
                     string src = System.IO.File.ReadAllText(p);
                     string sha = Util.Sha256Hex(src);
-                    SendJson(res, "{\"ok\":true,\"source\":" + Util.JsonStr(src) + ",\"path\":" + Util.JsonStr(p) + ",\"sha\":" + Util.JsonStr(sha) + "}");
+                    SendJson(res, "{\"ok\":true,\"source\":" + Util.JsonStr(src) + ",\"path\":" + Util.JsonStr(p) + ",\"name\":" + Util.JsonStr(System.IO.Path.GetFileName(p)) + ",\"sha\":" + Util.JsonStr(sha) + "}");
                 }
                 catch (Exception ex)
                 {
