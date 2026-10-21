@@ -410,6 +410,27 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // Read a second Markdown document for the split view. Query parameters
+  // live in url.searchParams, not url.pathname; keep this route aligned with
+  // the native host and return the same response shape.
+  if (path === '/api/doc') {
+    const requestedPath = url.searchParams.get('path');
+    const target = requestedPath || mdPath;
+    try {
+      const src = readFileSync(target, 'utf8');
+      json(res, {
+        ok: true,
+        source: src,
+        sha: sha256(src),
+        path: target,
+        name: basename(target),
+      });
+    } catch {
+      json(res, { ok: false, error: 'not found' });
+    }
+    return;
+  }
+
   if (path === '/api/open-editor') {
     json(res, openInEditor(Number(url.searchParams.get('line') || 1)));
     return;

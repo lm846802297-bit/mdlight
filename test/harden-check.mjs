@@ -44,6 +44,8 @@ const dir = mkdtempSync(join(tmpdir(), 'mdl-hard-'));
 const docPath = join(dir, 'hard.md');
 const SRC = '# 硬化测试\n\n原内容\n';
 writeFileSync(docPath, SRC);
+const secondDocPath = join(dir, 'second.md');
+writeFileSync(secondDocPath, '# 第二份文档\n');
 
 const PORT = 20430;
 // Isolate config: this test posts theme/fontSize to /api/config, which would
@@ -140,6 +142,9 @@ const up = base + PORT;
   });
   await sleep(2500);
   const nup = base + 20431;
+  const second = await (await fetch(nup + '/api/doc?path=' + encodeURIComponent(secondDocPath))).json();
+  ok(second.ok && second.source.includes('第二份文档') && second.path === secondDocPath,
+    'Node 模式 GET /api/doc?path=... 能读取第二份文档', JSON.stringify(second));
   const g = await (await fetch(nup + '/api/config')).json();
   ok(g.theme === 'sepia' || g.theme === undefined, 'Node 模式 GET /api/config 可用', JSON.stringify(g));
   const s = await post(nup + '/api/config', { theme: 'sepia' });
